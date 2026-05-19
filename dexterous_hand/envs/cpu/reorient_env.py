@@ -172,11 +172,6 @@ class ShadowHandReorientEnv(gym.Env):
 
         drop_offset = self.reward_config.drop_height_offset
         threshold_z = self._palm_z - drop_offset
-        dropped = cube_pos[2] < threshold_z
-        # H2 smooth drop factor: clamped smoothstep over the drop_height_offset
-        # margin. 0 at/above palm, 1 at/below threshold, smooth ramp in between.
-        # Reward function uses this as a continuous multiplier; binary `dropped`
-        # is still used below for episode termination.
         safety = float(np.clip((cube_pos[2] - threshold_z) / drop_offset, 0.0, 1.0))
         drop_factor = 1.0 - (3.0 * safety**2 - 2.0 * safety**3)
 
@@ -200,7 +195,7 @@ class ShadowHandReorientEnv(gym.Env):
             self._target_quat = self._sample_target_quat(cube_quat=cube_quat)
             self.reward_calculator.reset()
 
-        terminated = dropped
+        terminated = False
 
         obs = self._get_obs()
         info = {

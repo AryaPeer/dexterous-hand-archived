@@ -218,11 +218,6 @@ class ShadowHandReorientMjxEnv(MjxVecEnv):
 
         drop_offset = self.reward_config.drop_height_offset
         threshold_z = env_state.palm_z - drop_offset
-        dropped = cube_pos[2] < threshold_z
-        # H2 smooth drop factor: clamped smoothstep over the drop_height_offset
-        # margin. 0 at/above palm, 1 at/below threshold, smooth ramp in between.
-        # Reward function uses this as a continuous multiplier; binary `dropped`
-        # is still used below for episode termination.
         safety = jnp.clip((cube_pos[2] - threshold_z) / drop_offset, 0.0, 1.0)
         drop_factor = 1.0 - (3.0 * safety**2 - 2.0 * safety**3)
 
@@ -276,7 +271,10 @@ class ShadowHandReorientMjxEnv(MjxVecEnv):
             lambda: new_reward_state,
         )
 
-        done = dropped
+        # Cube drop no longer terminates the episode; the smooth drop_factor
+        # already applies per-step penalty + zeroed orientation reward, and
+        # ending early let the policy escape the bad-rotation regime.
+        done = jnp.array(False)
 
         new_env_state = ReorientEnvState(
             reward_state=new_reward_state,

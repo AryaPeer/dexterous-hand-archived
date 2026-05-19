@@ -1,11 +1,23 @@
-# RunPod sanity — all 3 tasks
+# RunPod sanity — peg + reorient
 
-One block on a fresh pod that runs peg + grasp + reorient sanity
-back-to-back into a single log. Primary purpose: verify the
-ClampedActor + `ent_coef=0.0` fix actually keeps `train/std` bounded
-across every task before paying for full runs.
+One block on a fresh pod that runs peg 10M + reorient 3M back-to-back into a
+single log. Two purposes:
+1. Verify ClampedActor + `ent_coef=0.0` keeps `train/std` bounded.
+2. **Peg 10M:** confirm `metrics/stage` rolling mean clears 2.5 with the
+   curriculum fully ramped — earlier 1M sanity was inconclusive because the
+   curriculum compressed to 1% of reference and the policy had ~680k steps
+   at the hardest setting (clearance=1mm, p_pre_grasped=0.2). 10M leaves
+   ~6.8M of real training at max difficulty.
+3. **Reorient 3M:** validate the no-drop-termination + smooth `drop_factor`
+   change. Cube can fall and the episode keeps going — `num_finger_contacts`
+   and `cube_drop` per-step penalty are the signals now, not early-end.
 
-~10 hr wallclock on a 4090 at 256 envs. ~$7 at $0.69/hr.
+Grasp is no longer in the bundle — the prior 5M sanity already showed clean
+learning (`eval/success_rate` 0 → 0.25, `obj_height` climbing toward the
+0.448 plateau, std bounded). No code path has changed that affects grasp,
+so re-running it would be ~$5 of confirmation.
+
+~17 hr wallclock on a 4090 at 256 envs. ~$12 at $0.69/hr.
 
 ## 1. Pod
 
@@ -55,10 +67,7 @@ export WANDB_MODE=disabled
 
 (
   echo "==================== train-peg-mjx ===================="
-  uv run python main.py train-peg-mjx --num-envs 256 --total-timesteps 1000000 || true
-
-  echo "==================== train-grasp-mjx ===================="
-  uv run python main.py train-grasp-mjx --num-envs 256 --total-timesteps 5000000 || true
+  uv run python main.py train-peg-mjx --num-envs 256 --total-timesteps 10000000 || true
 
   echo "==================== train-reorient-mjx ===================="
   uv run python main.py train-reorient-mjx \
@@ -71,13 +80,13 @@ export WANDB_MODE=disabled
 Detach with `Ctrl+b d`. Reattach with `tmux attach -t sanity`.
 
 Notes:
-- `|| true` between tasks means one failure does not skip the others.
+- `|| true` between tasks means peg failure does not skip reorient.
 - `--curriculum-reference-timesteps 30000000` on reorient pins sanity in
   stage 0 (30° targets). Without it, the 3-stage curriculum compresses
   into the 3M sanity window and reorient spends most of it in stage 2
   (180°), which 3M can't train.
-- Order is peg → grasp → reorient. Peg fails fastest if something is
-  broken (~1.5 hr), so it's first.
+- Order is peg → reorient. Peg is the longer of the two; reorient is the
+  variance-test on the no-drop-termination change.
 
 ## 3b. Troubleshooting: `RESOURCE_EXHAUSTED: CUDA_ERROR_OUT_OF_MEMORY` at env.reset()
 
@@ -108,36 +117,60 @@ while pgrep -f "main.py train-" > /dev/null; do sleep 60; done \
 
 ## 5. Pass criteria
 
-The single make-or-break metric is `train/std` — if it climbs past ~1.5
-on any task, ClampedActor isn't doing its job and task metrics aren't
-worth reading.
+`train/std` is the regression test on ClampedActor — if it climbs past
+~1.5 on either task, the policy clamp isn't doing its job and task
+metrics aren't worth reading.
 
-| metric                                            | bar                              |
-|---------------------------------------------------|----------------------------------|
-| **all** `train/std`                               | stays in [0.05, ~1.1], never > 1.5 |
-| **all** `train/metrics/nan_rate`                  | < 0.01                            |
-| **peg** `train/metrics/num_finger_contacts`       | ≥ 1.0 by 500k, climbing           |
-| **peg** `train/metrics/stage`                     | > 2.0 by 1M (gripping + lifting)  |
-| **peg** `train/metrics/insertion_depth`           | > 0.001 by 1M (rising above noise)|
-| **grasp** `train/metrics/num_finger_contacts`     | ≥ 2.0 sustained                   |
-| **grasp** `train/metrics/object_height`           | ≥ 0.448 reached (= 1.2 cm delta)  |
-| **grasp** `train/metrics/success_hold_steps`      | > 0 at least once                 |
-| **grasp** `train/reward/success`                  | > 0 at least once                 |
-| **reorient** `train/metrics/angular_distance`     | trending DOWN, not drifting up    |
-| **reorient** `train/metrics/num_finger_contacts`  | ≥ 1.5 sustained (cube not dropped)|
+**Both tasks:**
 
-`metrics/object_height = 0.448` is the geometric ceiling for grasp
-(7 cm cube + fixed-z wrist caps delta-lift at ~1.2 cm). `lift_target =
-0.012` is set to match; `is_success` only fires when the policy reaches
-this plateau.
+| metric                            | bar                                |
+|-----------------------------------|------------------------------------|
+| `train/std`                       | stays in [0.05, ~1.1], never > 1.5 |
+| `train/metrics/nan_rate`          | < 0.01                             |
+
+**Peg (10M) — diagnostic bars on real curriculum:**
+
+The curriculum at 10M scales to stage starts (0, 800k, 1.6M, 2.4M, 3.2M),
+so by step 3.2M the policy is training at max difficulty (clearance=1mm,
+p_pre_grasped=0.2). Measure final-window (last 1M of training) rolling
+means:
+
+| metric                                          | bar                                      |
+|-------------------------------------------------|------------------------------------------|
+| `train/metrics/stage`                           | ≥ 2.5 (lift sustained, approaching align)|
+| `train/metrics/num_finger_contacts`             | ≥ 2.0 sustained                          |
+| `train/metrics/peg_height`                      | rising trend, > initial + 0.02 mean       |
+| `train/metrics/insertion_depth`                 | > 0.001 mean (above noise floor)          |
+| `train/reward/insertion_drive`                  | > 0 occurring (4-gate firing sometimes)   |
+
+If stage stalls < 2.0 at 10M, **don't ship the 150M.** Dig into:
+- `lift_target=0.1m` vs stage-2 trigger of 0.02m (mismatch?)
+- `p_pre_grasped` ramping too aggressively in the curriculum
+- whether `insertion_drive`'s 4-gate is locked out (align_weight sigmoid
+  needs peg_clearance > 2cm; if peg never gets there, drive is 0 forever)
+
+**Reorient (3M):**
+
+| metric                                            | bar                                |
+|---------------------------------------------------|------------------------------------|
+| `train/metrics/angular_distance`                  | trending DOWN, not drifting up     |
+| `train/metrics/num_finger_contacts`               | ≥ 1.5 sustained (cube held)        |
+| `train/metrics/success_steps`                     | > 0 (any non-zero is signal)       |
+
+No-drop-termination side effect: episodes will hit the 400-step time
+limit much more often than before. `rollout/ep_len_mean` should approach
+400 even when the cube falls. If `ep_len_mean` stays near 100 (early
+truncation pattern), the change didn't land — re-verify the env code.
 
 ## 6. Cost
 
 | pod      | rate     | wall    | cost  |
 |----------|----------|---------|-------|
-| RTX 4090 | $0.69/hr | ~10 hr  | ~$7   |
-| RTX 5090 | $0.99/hr | ~5 hr   | ~$5   |
+| RTX 4090 | $0.69/hr | ~17 hr  | ~$12  |
+| RTX 5090 | $0.99/hr | ~9 hr   | ~$9   |
 
 ## 7. After sanity passes
 
-See `runpod_full_runs.md` for the full-run commands.
+See `runpod_full_runs.md` for the full-run commands. Grasp 70M is safe
+to ship without re-sanity since no relevant code has changed; bundle it
+with peg full and reorient full if you want a single pod.
