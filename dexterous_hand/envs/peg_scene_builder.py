@@ -48,13 +48,7 @@ class PegNameMap:
 def build_peg_scene(
     config: PegSceneConfig | None = None,
 ) -> tuple[mujoco.MjModel, mujoco.MjData, PegNameMap]:
-    """Compile the table+hand+peg+hole scene.
-
-    @param config: peg scene physics + layout (clearance, hole offset, etc.)
-    @type config: PegSceneConfig | None
-    @return: (model, data, name_map)
-    @rtype: tuple[mujoco.MjModel, mujoco.MjData, PegNameMap]
-    """
+    """Compile the table+hand+peg+hole scene."""
 
     if config is None:
         config = PegSceneConfig()

@@ -57,40 +57,6 @@ def peg_reward(
     depth_reward_scale: float = 10.0,
     idle_grace_steps: int = 3,
 ) -> tuple[jnp.ndarray, PegRewardState, dict[str, jnp.ndarray]]:
-    """Total peg-in-hole reward + new state + per-component info dict.
-
-    @param state: previous-step reward state
-    @type state: PegRewardState
-    @param stage: current curriculum stage (0=reach, 1=grasp, 2=lift, 3=insert)
-    @type stage: jnp.ndarray
-    @param finger_positions: (5, 3) per-finger world positions
-    @type finger_positions: jnp.ndarray
-    @param peg_position: (3,) peg center
-    @type peg_position: jnp.ndarray
-    @param peg_axis: (3,) peg long axis (world frame)
-    @type peg_axis: jnp.ndarray
-    @param hole_position: (3,) hole center
-    @type hole_position: jnp.ndarray
-    @param hole_axis: (3,) hole insertion axis (world frame)
-    @type hole_axis: jnp.ndarray
-    @param insertion_depth: scalar peg-tip insertion depth
-    @type insertion_depth: jnp.ndarray
-    @param contact_force_magnitude: scalar wall contact force magnitude
-    @type contact_force_magnitude: jnp.ndarray
-    @param finger_contact_mask: (5,) bool mask of fingers in contact
-    @type finger_contact_mask: jnp.ndarray
-    @param peg_height: scalar peg z (world)
-    @type peg_height: jnp.ndarray
-    @param peg_linvel: (3,) peg linear velocity
-    @type peg_linvel: jnp.ndarray
-    @param actions: (n_act,) clipped action vector this step
-    @type actions: jnp.ndarray
-    @param previous_actions: (n_act,) prev step action (currently unused)
-    @type previous_actions: jnp.ndarray
-    @return: (total, next_state, info)
-    @rtype: tuple[jnp.ndarray, PegRewardState, dict[str, jnp.ndarray]]
-    """
-
     del previous_actions
 
     ft_weights = jnp.asarray(fingertip_weights)

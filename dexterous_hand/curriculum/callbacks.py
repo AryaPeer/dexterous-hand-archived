@@ -10,18 +10,11 @@ def scale_stage_starts(
     total_timesteps: int,
     reference_total_timesteps: int,
 ) -> list[tuple]:
-    """Scale stage start timesteps from a reference run length to the current run length.
+    """Scale stage start steps from `reference_total_timesteps` to `total_timesteps`.
 
-    @param stages: list of (start_step, *params) tuples
-    @type stages: list[tuple]
-    @param total_timesteps: current run length
-    @type total_timesteps: int
-    @param reference_total_timesteps: run length the stage list was authored for
-    @type reference_total_timesteps: int
-    @return: stages with scaled (and monotonic, clamped, anchored-at-0) start steps
-    @rtype: list[tuple]
+    Stages are `(start_step, *params)` tuples. Output is monotonic, clamped to
+    [0, total_timesteps], and anchored at 0 for the first stage.
     """
-
     if total_timesteps <= 0:
         raise ValueError("total_timesteps must be > 0")
     if reference_total_timesteps <= 0:

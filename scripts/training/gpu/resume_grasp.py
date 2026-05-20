@@ -8,15 +8,8 @@ from stable_baselines3.common.callbacks import CheckpointCallback
 from stable_baselines3.common.vec_env import VecMonitor, VecNormalize
 
 from dexterous_hand.config import MjxGraspTrainConfig
-import dexterous_hand.envs  # noqa: F401  - register gym ids for CPU eval env
 from dexterous_hand.envs.gpu.grasp_env import ShadowHandGraspMjxEnv
-from scripts.training._common import (
-    RewardInfoLoggerCallback,
-    VecNormSyncEvalCallback,
-    compute_eval_freq,
-    make_cpu_eval_env,
-    setup_sb3_logger,
-)
+from scripts.training._common import RewardInfoLoggerCallback, setup_sb3_logger
 
 
 def train(args: SimpleNamespace) -> None:
@@ -49,23 +42,8 @@ def train(args: SimpleNamespace) -> None:
 
     setup_sb3_logger(model, run_dir)
 
-    eval_env = make_cpu_eval_env(
-        env_id="ShadowHandGrasp-v0",
-        seed=config.seed + 20_000,
-        scene_config=config.scene_config,
-        reward_config=config.reward_config,
-        norm_obs=config.norm_obs,
-    )
-
     callbacks = [
         RewardInfoLoggerCallback(),
-        VecNormSyncEvalCallback(
-            eval_env,
-            best_model_save_path=str(run_dir / "best"),
-            eval_freq=compute_eval_freq(args.additional_timesteps, config.num_envs),
-            n_eval_episodes=20,
-            deterministic=True,
-        ),
         CheckpointCallback(
             save_freq=max(500_000 // config.num_envs, 1),
             save_path=str(run_dir / "checkpoints"),
@@ -88,7 +66,6 @@ def train(args: SimpleNamespace) -> None:
 
     print(f"Saved to {run_dir}")
     vec_env.close()
-    eval_env.close()
 
 def parse_args() -> SimpleNamespace:
     parser = argparse.ArgumentParser(description="Resume Shadow Hand grasping (MJX + SBX PPO)")

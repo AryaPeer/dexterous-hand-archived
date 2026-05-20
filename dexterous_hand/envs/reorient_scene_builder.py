@@ -41,13 +41,7 @@ class ReorientNameMap:
 def build_reorient_scene(
     config: ReorientSceneConfig | None = None,
 ) -> tuple[mujoco.MjModel, mujoco.MjData, ReorientNameMap]:
-    """Compile the hand+cube reorient scene (no table, hand-mounted).
-
-    @param config: scene physics + cube layout
-    @type config: ReorientSceneConfig | None
-    @return: (model, data, name_map)
-    @rtype: tuple[mujoco.MjModel, mujoco.MjData, ReorientNameMap]
-    """
+    """Compile the hand+cube reorient scene (no table, hand-mounted)."""
 
     if config is None:
         config = ReorientSceneConfig()

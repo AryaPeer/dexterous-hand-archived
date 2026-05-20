@@ -76,16 +76,7 @@ def apply_flexion_bias(
     model: mujoco.MjModel,
     bias_map: dict[str, float] = TABLE_TASK_FLEXION_BIAS,
 ) -> np.ndarray:
-    """Clamp `bias_map` joint targets into qpos in place.
-
-    @param qpos: full qpos buffer
-    @type qpos: np.ndarray
-    @param model: compiled mujoco model
-    @type model: mujoco.MjModel
-    @param bias_map: joint name -> desired angle (radians)
-    @type bias_map: dict[str, float]
-    """
-
+    """Set the joints listed in `bias_map` to their target angles, clipped to range."""
     for jname, bias in bias_map.items():
         jid = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_JOINT, jname)
         if jid < 0:
@@ -154,13 +145,7 @@ class NameMap:
 def build_scene(
     config: SceneConfig | None = None,
 ) -> tuple[mujoco.MjModel, mujoco.MjData, NameMap]:
-    """Compile the table+hand+object grasp scene.
-
-    @param config: scene physics + layout
-    @type config: SceneConfig | None
-    @return: (model, data, name_map)
-    @rtype: tuple[mujoco.MjModel, mujoco.MjData, NameMap]
-    """
+    """Compile the table+hand+object grasp scene."""
 
     if config is None:
         config = SceneConfig()

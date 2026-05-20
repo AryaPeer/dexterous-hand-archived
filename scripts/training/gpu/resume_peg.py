@@ -12,15 +12,8 @@ from dexterous_hand.curriculum.callbacks import (
     AssemblyCurriculumCallback,
     scale_stage_starts,
 )
-import dexterous_hand.envs  # noqa: F401
 from dexterous_hand.envs.gpu.peg_env import ShadowHandPegMjxEnv
-from scripts.training._common import (
-    RewardInfoLoggerCallback,
-    VecNormSyncEvalCallback,
-    compute_eval_freq,
-    make_cpu_eval_env,
-    setup_sb3_logger,
-)
+from scripts.training._common import RewardInfoLoggerCallback, setup_sb3_logger
 
 
 def train(args: SimpleNamespace) -> None:
@@ -68,29 +61,9 @@ def train(args: SimpleNamespace) -> None:
 
     setup_sb3_logger(model, run_dir)
 
-    stage0_clearance, stage0_p_pre_grasped = curriculum_stages[0][1], curriculum_stages[0][2]
-    eval_env = make_cpu_eval_env(
-        env_id="ShadowHandPeg-v0",
-        seed=config.seed + 20_000,
-        scene_config=config.scene_config,
-        reward_config=config.reward_config,
-        norm_obs=config.norm_obs,
-        post_make=lambda env: env.set_curriculum_params(
-            clearance=stage0_clearance,
-            p_pre_grasped=stage0_p_pre_grasped,
-        ),
-    )
-
     callbacks = [
         curriculum_callback,
         RewardInfoLoggerCallback(),
-        VecNormSyncEvalCallback(
-            eval_env,
-            best_model_save_path=str(run_dir / "best"),
-            eval_freq=compute_eval_freq(args.additional_timesteps, config.num_envs),
-            n_eval_episodes=20,
-            deterministic=True,
-        ),
         CheckpointCallback(
             save_freq=max(500_000 // config.num_envs, 1),
             save_path=str(run_dir / "checkpoints"),
@@ -113,7 +86,6 @@ def train(args: SimpleNamespace) -> None:
 
     print(f"Saved to {run_dir}")
     vec_env.close()
-    eval_env.close()
 
 def parse_args() -> SimpleNamespace:
     parser = argparse.ArgumentParser(description="Resume Shadow Hand peg-in-hole (MJX + SBX PPO)")

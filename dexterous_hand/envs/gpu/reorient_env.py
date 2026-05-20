@@ -58,24 +58,6 @@ class ShadowHandReorientMjxEnv(MjxVecEnv):
         obs_noise_std: float = 0.0,
         dr: DomainRandomization | None = None,
     ) -> None:
-        """Build the batched reorient env.
-
-        @param num_envs: number of parallel envs
-        @type num_envs: int
-        @param seed: PRNG seed
-        @type seed: int
-        @param scene_config: scene physics + cube layout
-        @type scene_config: ReorientSceneConfig | None
-        @param reward_config: reorient reward config
-        @type reward_config: ReorientRewardConfig | None
-        @param max_episode_steps: per-env episode horizon
-        @type max_episode_steps: int
-        @param obs_noise_std: gaussian obs noise std
-        @type obs_noise_std: float
-        @param dr: domain randomization config
-        @type dr: DomainRandomization | None
-        """
-
         self.scene_config = scene_config or ReorientSceneConfig()
         self.reward_config = reward_config or ReorientRewardConfig()
         self._episode_limit = max_episode_steps

@@ -50,24 +50,6 @@ class ShadowHandGraspMjxEnv(MjxVecEnv):
         obs_noise_std: float = 0.0,
         dr: DomainRandomization | None = None,
     ) -> None:
-        """Build the batched grasp env.
-
-        @param num_envs: number of parallel envs
-        @type num_envs: int
-        @param seed: PRNG seed
-        @type seed: int
-        @param scene_config: scene physics + layout
-        @type scene_config: SceneConfig | None
-        @param reward_config: reward weights and thresholds
-        @type reward_config: RewardConfig | None
-        @param max_episode_steps: per-env episode cap before truncation
-        @type max_episode_steps: int
-        @param obs_noise_std: gaussian noise std added to obs (0 disables)
-        @type obs_noise_std: float
-        @param dr: domain randomization config; None disables
-        @type dr: DomainRandomization | None
-        """
-
         self.scene_config = scene_config or SceneConfig()
         self.reward_config = reward_config or RewardConfig()
         self._episode_limit = max_episode_steps

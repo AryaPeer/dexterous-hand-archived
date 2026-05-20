@@ -5,16 +5,7 @@ def get_finger_touch_from_sensors(
     sensordata: jnp.ndarray,
     finger_touch_adr: jnp.ndarray,
 ) -> tuple[jnp.ndarray, jnp.ndarray]:
-    """Read per-finger touch values + boolean contact mask out of `sensordata`.
-
-    @param sensordata: full mjx sensor buffer (1D)
-    @type sensordata: jnp.ndarray
-    @param finger_touch_adr: (5,) sensor address indices for each finger touch sensor
-    @type finger_touch_adr: jnp.ndarray
-    @return: (touch_vals (5,), contact_mask (5,) bool)
-    @rtype: tuple[jnp.ndarray, jnp.ndarray]
-    """
-
+    """Per-finger touch values and boolean contact mask from the sensor buffer."""
     touch_vals = sensordata[finger_touch_adr]
     contact_mask = touch_vals > 0.0
     return touch_vals, contact_mask
@@ -28,12 +19,7 @@ def get_object_state_jax(
     obj_qpos_start: int,
     obj_qvel_start: int,
 ) -> tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray, jnp.ndarray]:
-    """Position, orientation, and velocities of a free-joint object.
-
-    @return: (position (3,), quaternion (4,), linear_vel (3,), angular_vel (3,))
-    @rtype: tuple[jnp.ndarray, jnp.ndarray, jnp.ndarray, jnp.ndarray]
-    """
-
+    """Position, orientation, linear and angular velocity of a free-joint object."""
     position = xpos[obj_body_id]
     orientation = qpos[obj_qpos_start + 3 : obj_qpos_start + 7]
     linear_vel = qvel[obj_qvel_start : obj_qvel_start + 3]
@@ -100,12 +86,7 @@ def get_peg_hole_relative_jax(
     peg_body_id: int,
     hole_body_id: int,
 ) -> tuple[jnp.ndarray, jnp.ndarray]:
-    """Relative position and angular error between peg and hole.
-
-    @return: (rel_pos (3,), angular_error (3,))
-    @rtype: tuple[jnp.ndarray, jnp.ndarray]
-    """
-
+    """Relative position and angular error between peg and hole."""
     peg_pos = xpos[peg_body_id]
     hole_pos = xpos[hole_body_id]
     rel_pos = peg_pos - hole_pos

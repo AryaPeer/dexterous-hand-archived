@@ -44,34 +44,8 @@ def reorient_reward(
     tracking_k: float = 2.0,
     orientation_contact_alpha: float = 3.0 / 7.0,
 ) -> tuple[jnp.ndarray, ReorientRewardState, dict[str, jnp.ndarray], jnp.ndarray]:
-    """Total reorient reward + new state + info + target-reached flag.
-
-    @param state: previous-step reward state
-    @type state: ReorientRewardState
-    @param cube_quat: (4,) current cube orientation [w, x, y, z]
-    @type cube_quat: jnp.ndarray
-    @param target_quat: (4,) target orientation
-    @type target_quat: jnp.ndarray
-    @param cube_pos: (3,) cube position (unused)
-    @type cube_pos: jnp.ndarray
-    @param cube_linvel: (3,) cube linear velocity (unused)
-    @type cube_linvel: jnp.ndarray
-    @param finger_positions: (5, 3) finger world positions (unused)
-    @type finger_positions: jnp.ndarray
-    @param finger_contact_mask: (5,) bool mask of fingers touching the cube
-    @type finger_contact_mask: jnp.ndarray
-    @param actions: (n_act,) clipped action vector this step
-    @type actions: jnp.ndarray
-    @param previous_actions: (n_act,) prev step action (currently unused)
-    @type previous_actions: jnp.ndarray
-    @param drop_factor: scalar float in [0, 1] — smooth height-gated drop
-        multiplier. 0 when cube is at safe height, ramps via clamped smoothstep
-        to 1 at/below the drop threshold. Replaces the H2 binary cliff.
-    @type drop_factor: jnp.ndarray
-    @return: (total, next_state, info, target_reached)
-    @rtype: tuple[jnp.ndarray, ReorientRewardState, dict[str, jnp.ndarray], jnp.ndarray]
-    """
-
+    # drop_factor: smooth height-gated multiplier in [0, 1]. 0 at safe height,
+    # ramps via clamped smoothstep to 1 at/below the drop threshold.
     del previous_actions, cube_pos, cube_linvel, finger_positions
 
     n_contacts = jnp.sum(finger_contact_mask).astype(jnp.float32)

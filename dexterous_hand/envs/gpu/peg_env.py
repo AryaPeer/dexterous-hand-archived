@@ -55,24 +55,6 @@ class ShadowHandPegMjxEnv(MjxVecEnv):
         obs_noise_std: float = 0.0,
         dr: DomainRandomization | None = None,
     ) -> None:
-        """Build the batched peg env.
-
-        @param num_envs: number of parallel envs
-        @type num_envs: int
-        @param seed: PRNG seed
-        @type seed: int
-        @param scene_config: peg scene physics + layout
-        @type scene_config: PegSceneConfig | None
-        @param reward_config: peg reward weights and thresholds
-        @type reward_config: PegRewardConfig | None
-        @param max_episode_steps: per-env episode horizon
-        @type max_episode_steps: int
-        @param obs_noise_std: gaussian obs noise std
-        @type obs_noise_std: float
-        @param dr: domain randomization config
-        @type dr: DomainRandomization | None
-        """
-
         self.scene_config = scene_config or PegSceneConfig()
         self.reward_config = reward_config or PegRewardConfig()
         if self.scene_config.spawn_max_radius <= self.scene_config.spawn_min_radius:
@@ -204,9 +186,8 @@ class ShadowHandPegMjxEnv(MjxVecEnv):
         mjx_data = mjx_data.replace(qpos=qpos, qvel=jnp.zeros(mjx_model.nv))
         mjx_data = mjx.forward(mjx_model, mjx_data)
 
-        # settle contacts before the policy acts: pre-grasp can interpenetrate fingers and NaN under SAC.
-        # GRIP_BIAS ctrl keeps flexion joints closed during settle so the peg
-        # doesn't slip out of the pre-grasped pose before step 1.
+        # GRIP_BIAS ctrl during settle: ctrl=0 would drive flexion joints to
+        # angle 0 (fully open) and drop the peg before the policy ever acts.
         mjx_data = mjx_data.replace(ctrl=self._grip_ctrl)
 
         def _settle(data: Any, _: Any) -> tuple[Any, None]:
