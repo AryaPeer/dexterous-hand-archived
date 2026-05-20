@@ -16,7 +16,7 @@ def main() -> None:
 
     n = args.num_envs
     model, _, _ = build_scene()
-    print(f"cpu model: nq={model.nq} nv={model.nv} nu={model.nu} "
+    print(f"mj model: nq={model.nq} nv={model.nv} nu={model.nu} "
           f"ngeom={model.ngeom} njnt={model.njnt} nbody={model.nbody}")
 
     mjx_model = mjx.put_model(model)

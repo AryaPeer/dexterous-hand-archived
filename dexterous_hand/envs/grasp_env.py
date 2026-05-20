@@ -13,18 +13,18 @@ from dexterous_hand.config import (
     RewardConfig,
     SceneConfig,
 )
-from dexterous_hand.envs.gpu.mjx_vec_env import MjxVecEnv
+from dexterous_hand.envs.mjx_vec_env import MjxVecEnv
 from dexterous_hand.envs.scene_builder import (
     apply_flexion_bias,
     build_scene,
     get_object_half_height,
 )
-from dexterous_hand.rewards.gpu.grasp_reward import (
+from dexterous_hand.rewards.grasp_reward import (
     GraspRewardState,
     grasp_reward,
     init_grasp_reward_state,
 )
-from dexterous_hand.utils.gpu.mjx_helpers import (
+from dexterous_hand.utils.mjx_helpers import (
     get_finger_touch_from_sensors,
     get_fingertip_positions_jax,
     get_object_state_jax,
@@ -59,8 +59,8 @@ class ShadowHandGraspMjxEnv(MjxVecEnv):
 
         _, _, self._nm = build_scene(self.scene_config)
 
-        init_qpos = self._cpu_data.qpos.copy()
-        apply_flexion_bias(init_qpos, self._cpu_model)
+        init_qpos = self._mj_data.qpos.copy()
+        apply_flexion_bias(init_qpos, self._mj_model)
         self._init_qpos = jnp.array(init_qpos)
 
         self._finger_touch_adr = jnp.asarray(
@@ -71,8 +71,8 @@ class ShadowHandGraspMjxEnv(MjxVecEnv):
         obj_geom_id = self._nm.object_geom_id
         self._object_half_height = float(
             get_object_half_height(
-                int(self._cpu_model.geom_type[obj_geom_id]),
-                list(self._cpu_model.geom_size[obj_geom_id]),
+                int(self._mj_model.geom_type[obj_geom_id]),
+                list(self._mj_model.geom_size[obj_geom_id]),
             )
         )
 
@@ -84,7 +84,7 @@ class ShadowHandGraspMjxEnv(MjxVecEnv):
         return 105
 
     def _action_size(self) -> int:
-        return int(self._cpu_model.nu)
+        return int(self._mj_model.nu)
 
     @property
     def _max_episode_steps(self) -> int:

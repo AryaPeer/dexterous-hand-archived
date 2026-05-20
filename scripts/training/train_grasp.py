@@ -10,19 +10,15 @@ from stable_baselines3.common.vec_env import VecMonitor, VecNormalize
 import wandb
 from wandb.integration.sb3 import WandbCallback
 
-from dexterous_hand.config import MjxPegTrainConfig
-from dexterous_hand.curriculum.callbacks import (
-    AssemblyCurriculumCallback,
-    scale_stage_starts,
-)
-from dexterous_hand.envs.gpu.peg_env import ShadowHandPegMjxEnv
+from dexterous_hand.config import MjxGraspTrainConfig
+from dexterous_hand.envs.grasp_env import ShadowHandGraspMjxEnv
 from dexterous_hand.policies.clamped_actor import make_clamped_actor
 from scripts.training._common import RewardInfoLoggerCallback, setup_sb3_logger
 
 
-def train(config: MjxPegTrainConfig) -> None:
+def train(config: MjxGraspTrainConfig) -> None:
 
-    run_dir = Path("runs") / f"peg_mjx_{config.num_envs}env_{config.seed}"
+    run_dir = Path("runs") / f"grasp_mjx_{config.num_envs}env_{config.seed}"
     run_dir.mkdir(parents=True, exist_ok=True)
 
     rollout_size = config.num_envs * config.n_steps_per_env
@@ -34,21 +30,13 @@ def train(config: MjxPegTrainConfig) -> None:
         )
         config.batch_size = new_bs
 
-    curriculum_stages = scale_stage_starts(
-        stages=config.curriculum_stages,
-        total_timesteps=config.total_timesteps,
-        reference_total_timesteps=config.curriculum_reference_timesteps,
-    )
-
-    wandb_config = asdict(config)
-    wandb_config["effective_curriculum_stages"] = curriculum_stages
     wandb.init(
         project="dexterous-hand",
-        name=f"peg-mjx-{config.num_envs}env",
-        config=wandb_config,
+        name=f"grasp-mjx-{config.num_envs}env",
+        config=asdict(config),
     )
 
-    vec_env = ShadowHandPegMjxEnv.from_config(config)
+    vec_env = ShadowHandGraspMjxEnv.from_config(config)
     vec_env = VecMonitor(vec_env)
 
     if config.norm_obs or config.norm_reward:
@@ -58,11 +46,6 @@ def train(config: MjxPegTrainConfig) -> None:
             norm_reward=config.norm_reward,
             clip_obs=10.0,
         )
-
-    curriculum_callback = AssemblyCurriculumCallback(
-        stages=curriculum_stages,
-        verbose=1,
-    )
 
     activation_fn = {"elu": nn.elu, "relu": nn.relu, "tanh": nn.tanh}[config.activation]
 
@@ -96,7 +79,6 @@ def train(config: MjxPegTrainConfig) -> None:
     setup_sb3_logger(model, run_dir)
 
     callbacks = [
-        curriculum_callback,
         RewardInfoLoggerCallback(),
         CheckpointCallback(
             save_freq=max(500_000 // config.num_envs, 1),
@@ -124,17 +106,17 @@ def train(config: MjxPegTrainConfig) -> None:
     wandb.finish()
     vec_env.close()
 
-def parse_args() -> MjxPegTrainConfig:
-    parser = argparse.ArgumentParser(description="Train Shadow Hand peg-in-hole (MJX + SBX PPO)")
+def parse_args() -> MjxGraspTrainConfig:
+    parser = argparse.ArgumentParser(description="Train Shadow Hand grasping (MJX + SBX PPO)")
     parser.add_argument("--num-envs", type=int, default=768)
-    parser.add_argument("--total-timesteps", type=int, default=150_000_000)
+    parser.add_argument("--total-timesteps", type=int, default=70_000_000)
     parser.add_argument("--learning-rate", type=float, default=3e-4)
     parser.add_argument("--batch-size", type=int, default=4096)
     parser.add_argument("--n-steps-per-env", type=int, default=128)
     parser.add_argument("--seed", type=int, default=42)
     args = parser.parse_args()
 
-    return MjxPegTrainConfig(
+    return MjxGraspTrainConfig(
         num_envs=args.num_envs,
         total_timesteps=args.total_timesteps,
         learning_rate=args.learning_rate,

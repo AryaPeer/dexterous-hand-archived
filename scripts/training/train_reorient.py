@@ -15,7 +15,7 @@ from dexterous_hand.curriculum.callbacks import (
     ReorientCurriculumCallback,
     scale_stage_starts,
 )
-from dexterous_hand.envs.gpu.reorient_env import ShadowHandReorientMjxEnv
+from dexterous_hand.envs.reorient_env import ShadowHandReorientMjxEnv
 from dexterous_hand.policies.clamped_actor import make_clamped_actor
 from scripts.training._common import RewardInfoLoggerCallback, setup_sb3_logger
 

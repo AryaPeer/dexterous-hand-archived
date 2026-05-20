@@ -6,7 +6,7 @@ import mujoco
 import numpy as np
 
 from dexterous_hand.config import SceneConfig
-from dexterous_hand.utils.cpu.mujoco_helpers import get_joint_qpos_qvel_range
+from dexterous_hand.utils.mujoco_helpers import get_joint_qpos_qvel_range
 
 ASSETS_DIR = Path(__file__).resolve().parent.parent.parent / "assets" / "shadow_hand"
 

@@ -13,11 +13,11 @@ from dexterous_hand.config import (
 
 def build_env(task: str, num_envs: int, seed: int):
     if task == "grasp":
-        from dexterous_hand.envs.gpu.grasp_env import ShadowHandGraspMjxEnv
+        from dexterous_hand.envs.grasp_env import ShadowHandGraspMjxEnv
         cfg = MjxGraspTrainConfig(num_envs=num_envs, seed=seed)
         return ShadowHandGraspMjxEnv.from_config(cfg)
     if task == "peg":
-        from dexterous_hand.envs.gpu.peg_env import ShadowHandPegMjxEnv
+        from dexterous_hand.envs.peg_env import ShadowHandPegMjxEnv
         cfg = MjxPegTrainConfig(num_envs=num_envs, seed=seed)
         env = ShadowHandPegMjxEnv.from_config(cfg)
         # peg align/depth are gated on curriculum stage; pin to stage 0 to mirror training start.
@@ -25,7 +25,7 @@ def build_env(task: str, num_envs: int, seed: int):
         env.set_curriculum_params(clearance=stage0[1], p_pre_grasped=stage0[2])
         return env
     if task == "reorient":
-        from dexterous_hand.envs.gpu.reorient_env import ShadowHandReorientMjxEnv
+        from dexterous_hand.envs.reorient_env import ShadowHandReorientMjxEnv
         cfg = MjxReorientTrainConfig(num_envs=num_envs, seed=seed)
         return ShadowHandReorientMjxEnv.from_config(cfg)
     raise ValueError(f"unknown task: {task!r}")

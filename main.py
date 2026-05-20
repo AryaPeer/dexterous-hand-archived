@@ -12,12 +12,12 @@ Usage: python main.py <command> [options]
 """
 
 COMMANDS = {
-    "train-grasp-mjx": "scripts.training.gpu.train_grasp",
-    "train-reorient-mjx": "scripts.training.gpu.train_reorient",
-    "train-peg-mjx": "scripts.training.gpu.train_peg",
-    "resume-grasp-mjx": "scripts.training.gpu.resume_grasp",
-    "resume-reorient-mjx": "scripts.training.gpu.resume_reorient",
-    "resume-peg-mjx": "scripts.training.gpu.resume_peg",
+    "train-grasp-mjx": "scripts.training.train_grasp",
+    "train-reorient-mjx": "scripts.training.train_reorient",
+    "train-peg-mjx": "scripts.training.train_peg",
+    "resume-grasp-mjx": "scripts.training.resume_grasp",
+    "resume-reorient-mjx": "scripts.training.resume_reorient",
+    "resume-peg-mjx": "scripts.training.resume_peg",
 }
 
 

@@ -14,15 +14,15 @@ from dexterous_hand.config import (
     PegRewardConfig,
     PegSceneConfig,
 )
-from dexterous_hand.envs.gpu.mjx_vec_env import MjxVecEnv
+from dexterous_hand.envs.mjx_vec_env import MjxVecEnv
 from dexterous_hand.envs.peg_scene_builder import build_peg_scene
 from dexterous_hand.envs.scene_builder import GRIP_BIAS, apply_flexion_bias, build_grip_ctrl
-from dexterous_hand.rewards.gpu.peg_reward import (
+from dexterous_hand.rewards.peg_reward import (
     PegRewardState,
     init_peg_reward_state,
     peg_reward,
 )
-from dexterous_hand.utils.gpu.mjx_helpers import (
+from dexterous_hand.utils.mjx_helpers import (
     get_body_axis_jax,
     get_finger_touch_from_sensors,
     get_fingertip_positions_jax,
@@ -79,7 +79,7 @@ class ShadowHandPegMjxEnv(MjxVecEnv):
         return 134
 
     def _action_size(self) -> int:
-        return int(self._cpu_model.nu)
+        return int(self._mj_model.nu)
 
     @property
     def _max_episode_steps(self) -> int:
@@ -88,18 +88,18 @@ class ShadowHandPegMjxEnv(MjxVecEnv):
     def _rebuild_peg_caches(self) -> None:
         _, _, self._nm = build_peg_scene(self.scene_config)
 
-        init_qpos_table = self._cpu_data.qpos.copy()
-        apply_flexion_bias(init_qpos_table, self._cpu_model)
+        init_qpos_table = self._mj_data.qpos.copy()
+        apply_flexion_bias(init_qpos_table, self._mj_model)
         self._init_qpos_table = jnp.array(init_qpos_table)
 
-        init_qpos_grip = self._cpu_data.qpos.copy()
-        apply_flexion_bias(init_qpos_grip, self._cpu_model, bias_map=GRIP_BIAS)
+        init_qpos_grip = self._mj_data.qpos.copy()
+        apply_flexion_bias(init_qpos_grip, self._mj_model, bias_map=GRIP_BIAS)
         self._init_qpos_grip = jnp.array(init_qpos_grip)
 
-        self._grip_ctrl = jnp.array(build_grip_ctrl(self._cpu_model))
+        self._grip_ctrl = jnp.array(build_grip_ctrl(self._mj_model))
 
         self._grasp_site_id = mujoco.mj_name2id(
-            self._cpu_model, mujoco.mjtObj.mjOBJ_SITE, "grasp_site"
+            self._mj_model, mujoco.mjtObj.mjOBJ_SITE, "grasp_site"
         )
 
         self._finger_touch_adr = jnp.asarray(
@@ -121,13 +121,13 @@ class ShadowHandPegMjxEnv(MjxVecEnv):
 
         if clearance_changed:
             self.scene_config.clearance = clearance_f
-            self._cpu_model = self._build_model()
-            self._cpu_data = mujoco.MjData(self._cpu_model)
-            self._mjx_model = mjx.put_model(self._cpu_model)
+            self._mj_model = self._build_model()
+            self._mj_data = mujoco.MjData(self._mj_model)
+            self._mjx_model = mjx.put_model(self._mj_model)
 
             n_act = self._action_size()
-            self._ctrl_low = jnp.array(self._cpu_model.actuator_ctrlrange[:n_act, 0])
-            self._ctrl_high = jnp.array(self._cpu_model.actuator_ctrlrange[:n_act, 1])
+            self._ctrl_low = jnp.array(self._mj_model.actuator_ctrlrange[:n_act, 0])
+            self._ctrl_high = jnp.array(self._mj_model.actuator_ctrlrange[:n_act, 1])
 
             self._rebuild_peg_caches()
             # obs shape depends on model; only re-jit obs when the model rebuilds
@@ -158,7 +158,7 @@ class ShadowHandPegMjxEnv(MjxVecEnv):
         mjx_data = mjx_data.replace(qpos=qpos, qvel=qvel)
         mjx_data = mjx.forward(mjx_model, mjx_data)
 
-        # peg spawn: radial sampling around the hole (mirrors CPU peg env)
+        # peg spawn: radial sampling around the hole
         min_r = float(self.scene_config.spawn_min_radius)
         max_r = float(self.scene_config.spawn_max_radius)
         r = jax.random.uniform(k2, minval=min_r, maxval=max_r)

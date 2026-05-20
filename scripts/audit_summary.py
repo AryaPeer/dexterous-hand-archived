@@ -8,7 +8,7 @@ print("""
  SUMMARY OF MATHEMATICAL AUDIT
 ================================================================================
 
-Numbers below all came from running the env code on CPU MuJoCo, not estimates.
+Numbers below all came from running the env code through MuJoCo (CPU), not LLM math.
 
 ACTUATOR SET (all three envs use the same 22 actuators):
   0  slide_x_act   range=[-0.15, +0.15]  prismatic X
@@ -157,7 +157,7 @@ achieved eval_success_rate=0.25 at 5M, confirming reachability.
 1. REORIENT settle uses GRIP_BIAS ctrl (5 lines, reorient_env.py)
    - construct grip_ctrl by joint->actuator mapping at __init__
    - use grip_ctrl instead of zero_ctrl in _reset_single's settle
-   - same fix in CPU reorient env
+   - mirror in any CPU eval path if you re-add one later
 
 2. PEG lift requirement matched to hand reach (3 options):
    - (recommended) add slide_z actuator [-0.15, 0.15] to peg_scene_builder

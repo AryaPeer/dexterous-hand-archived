@@ -16,35 +16,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 from dexterous_hand.config import PegSceneConfig, ReorientSceneConfig
 from dexterous_hand.envs.peg_scene_builder import build_peg_scene
 from dexterous_hand.envs.reorient_scene_builder import build_reorient_scene
-from dexterous_hand.envs.scene_builder import GRIP_BIAS, apply_flexion_bias
+from dexterous_hand.envs.scene_builder import apply_flexion_bias, build_grip_ctrl, GRIP_BIAS
 
 
 def hr(t):
     print("\n" + "=" * 78 + f"\n {t}\n" + "=" * 78)
-
-
-def joint_actuator_map(model):
-    """Return dict[joint_name] -> (actuator_idx, lo, hi)."""
-    out = {}
-    for ai in range(model.nu):
-        if int(model.actuator_trntype[ai]) == mujoco.mjtTrn.mjTRN_JOINT:
-            jid = int(model.actuator_trnid[ai, 0])
-            jname = mujoco.mj_id2name(model, mujoco.mjtObj.mjOBJ_JOINT, jid)
-            if jname:
-                lo, hi = model.actuator_ctrlrange[ai]
-                out[jname] = (ai, float(lo), float(hi))
-    return out
-
-
-def make_grip_ctrl(model):
-    """Build ctrl vector that drives joints to GRIP_BIAS targets, zero elsewhere."""
-    j2a = joint_actuator_map(model)
-    ctrl = np.zeros(model.nu)
-    for jname, target in GRIP_BIAS.items():
-        if jname in j2a:
-            ai, lo, hi = j2a[jname]
-            ctrl[ai] = float(np.clip(target, lo, hi))
-    return ctrl
 
 
 # ============================================================================
@@ -75,7 +51,7 @@ def reorient_grip_test():
     # Strategy: scan cube spawn position in a grid around the fingers,
     # apply GRIP_BIAS ctrl for 100 steps, and see which spawn lets the
     # cube stay in hand.
-    grip_ctrl = make_grip_ctrl(model)
+    grip_ctrl = build_grip_ctrl(model)
     print(f"\nGRIP_BIAS ctrl summary: {np.count_nonzero(grip_ctrl)} non-zero of {model.nu}")
 
     print(f"\nScanning cube spawn positions (offset from grasp_site, +Z = away from palm)...")
@@ -151,7 +127,7 @@ def peg_lift_test():
     data2.qpos[qadr:qadr + 3] = grasp
     data2.qpos[qadr + 3:qadr + 7] = np.array([1, 0, 0, 0])
     data2.qvel[:] = 0
-    grip_ctrl = make_grip_ctrl(model)
+    grip_ctrl = build_grip_ctrl(model)
     data2.ctrl[:] = grip_ctrl
     mujoco.mj_forward(model, data2)
     zs = []
@@ -199,17 +175,16 @@ def peg_lift_test():
     data4.qpos[qadr + 3:qadr + 7] = np.array([1, 0, 0, 0])
     data4.qvel[:] = 0
 
-    j2a = joint_actuator_map(model4)
     flex_ctrl = grip_ctrl.copy()
-    # Drive wrist to UP position (peg side of palm)
-    if "rh_WRJ1" in j2a:
-        ai, lo, hi = j2a["rh_WRJ1"]
-        flex_ctrl[ai] = hi  # max flex
-        print(f"  WRJ1 driven to {hi:+.3f}")
-    if "rh_WRJ2" in j2a:
-        ai, lo, hi = j2a["rh_WRJ2"]
-        flex_ctrl[ai] = hi
-        print(f"  WRJ2 driven to {hi:+.3f}")
+    for ai in range(model4.nu):
+        if int(model4.actuator_trntype[ai]) != mujoco.mjtTrn.mjTRN_JOINT:
+            continue
+        jid = int(model4.actuator_trnid[ai, 0])
+        jname = mujoco.mj_id2name(model4, mujoco.mjtObj.mjOBJ_JOINT, jid)
+        if jname in ("rh_WRJ1", "rh_WRJ2"):
+            hi = float(model4.actuator_ctrlrange[ai, 1])
+            flex_ctrl[ai] = hi
+            print(f"  {jname} driven to {hi:+.3f}")
     data4.ctrl[:] = flex_ctrl
     mujoco.mj_forward(model4, data4)
     zs = []

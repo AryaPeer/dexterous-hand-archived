@@ -24,16 +24,15 @@ def hr(t):
     print("\n" + "=" * 78 + f"\n {t}\n" + "=" * 78)
 
 
-def joint_actuator_map(model):
-    out = {}
+def find_actuator(model, joint_name):
     for ai in range(model.nu):
-        if int(model.actuator_trntype[ai]) == mujoco.mjtTrn.mjTRN_JOINT:
-            jid = int(model.actuator_trnid[ai, 0])
-            jname = mujoco.mj_id2name(model, mujoco.mjtObj.mjOBJ_JOINT, jid)
-            if jname:
-                lo, hi = model.actuator_ctrlrange[ai]
-                out[jname] = (ai, float(lo), float(hi))
-    return out
+        if int(model.actuator_trntype[ai]) != mujoco.mjtTrn.mjTRN_JOINT:
+            continue
+        jid = int(model.actuator_trnid[ai, 0])
+        if mujoco.mj_id2name(model, mujoco.mjtObj.mjOBJ_JOINT, jid) == joint_name:
+            lo, hi = model.actuator_ctrlrange[ai]
+            return ai, float(lo), float(hi)
+    raise KeyError(joint_name)
 
 
 hr("Peg slide_z verification")
@@ -41,9 +40,7 @@ cfg = PegSceneConfig()
 model, data, _ = build_peg_scene(cfg)
 print(f"model.nu = {model.nu}  (expected 23)")
 
-j2a = joint_actuator_map(model)
-assert "slide_z" in j2a, f"slide_z missing from actuators: {sorted(j2a.keys())}"
-sz_ai, sz_lo, sz_hi = j2a["slide_z"]
+sz_ai, sz_lo, sz_hi = find_actuator(model, "slide_z")
 print(f"slide_z actuator: idx={sz_ai}, range=[{sz_lo}, {sz_hi}]")
 
 palm_bid = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, "rh_palm")

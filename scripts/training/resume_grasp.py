@@ -8,7 +8,7 @@ from stable_baselines3.common.callbacks import CheckpointCallback
 from stable_baselines3.common.vec_env import VecMonitor, VecNormalize
 
 from dexterous_hand.config import MjxGraspTrainConfig
-from dexterous_hand.envs.gpu.grasp_env import ShadowHandGraspMjxEnv
+from dexterous_hand.envs.grasp_env import ShadowHandGraspMjxEnv
 from scripts.training._common import RewardInfoLoggerCallback, setup_sb3_logger
 
 

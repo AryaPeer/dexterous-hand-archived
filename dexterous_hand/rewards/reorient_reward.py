@@ -3,7 +3,7 @@ from typing import NamedTuple
 import jax.numpy as jnp
 
 from dexterous_hand.config import ReorientRewardWeights
-from dexterous_hand.utils.gpu.quaternion import quat_angular_distance
+from dexterous_hand.utils.quaternion import quat_angular_distance
 
 
 class ReorientRewardState(NamedTuple):

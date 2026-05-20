@@ -13,21 +13,21 @@ from dexterous_hand.config import (
     ReorientRewardConfig,
     ReorientSceneConfig,
 )
-from dexterous_hand.envs.gpu.mjx_vec_env import MjxVecEnv
+from dexterous_hand.envs.mjx_vec_env import MjxVecEnv
 from dexterous_hand.envs.reorient_scene_builder import build_reorient_scene
 from dexterous_hand.envs.scene_builder import GRIP_BIAS, apply_flexion_bias, build_grip_ctrl
-from dexterous_hand.rewards.gpu.reorient_reward import (
+from dexterous_hand.rewards.reorient_reward import (
     ReorientRewardState,
     init_reorient_reward_state,
     reorient_reward,
 )
-from dexterous_hand.utils.gpu.mjx_helpers import (
+from dexterous_hand.utils.mjx_helpers import (
     get_finger_touch_from_sensors,
     get_fingertip_positions_jax,
     get_object_state_jax,
     get_palm_position_jax,
 )
-from dexterous_hand.utils.gpu.quaternion import (
+from dexterous_hand.utils.quaternion import (
     quat_conjugate,
     quat_multiply,
     random_quaternion_within_angle,
@@ -66,17 +66,17 @@ class ShadowHandReorientMjxEnv(MjxVecEnv):
         super().__init__(num_envs=num_envs, seed=seed, obs_noise_std=obs_noise_std, dr=dr)
 
         _, _, self._nm = build_reorient_scene(self.scene_config)
-        init_qpos_np = self._cpu_data.qpos.copy()
-        apply_flexion_bias(init_qpos_np, self._cpu_model, bias_map=GRIP_BIAS)
+        init_qpos_np = self._mj_data.qpos.copy()
+        apply_flexion_bias(init_qpos_np, self._mj_model, bias_map=GRIP_BIAS)
         self._init_qpos = jnp.array(init_qpos_np)
-        self._grip_ctrl = jnp.array(build_grip_ctrl(self._cpu_model))
+        self._grip_ctrl = jnp.array(build_grip_ctrl(self._mj_model))
         self._finger_touch_adr = jnp.asarray(
             self._nm.sensor_map.finger_touch_adr, dtype=jnp.int32
         )
         self._fingertip_site_ids = jnp.asarray(self._nm.fingertip_site_ids, dtype=jnp.int32)
 
         self._grasp_site_id = mujoco.mj_name2id(
-            self._cpu_model, mujoco.mjtObj.mjOBJ_SITE, "grasp_site"
+            self._mj_model, mujoco.mjtObj.mjOBJ_SITE, "grasp_site"
         )
 
         self._max_target_angle = jnp.array(0.5236)
@@ -90,7 +90,7 @@ class ShadowHandReorientMjxEnv(MjxVecEnv):
         return 109
 
     def _action_size(self) -> int:
-        return int(self._cpu_model.nu)
+        return int(self._mj_model.nu)
 
     @property
     def _max_episode_steps(self) -> int:

@@ -52,9 +52,9 @@ class MjxVecEnv(VecEnv):
         self._obs_noise_std = float(obs_noise_std)
         self._dr_config = dr if dr is not None else DomainRandomization(enabled=False)
 
-        self._cpu_model = self._build_model()
-        self._cpu_data = mujoco.MjData(self._cpu_model)
-        self._mjx_model = mjx.put_model(self._cpu_model)
+        self._mj_model = self._build_model()
+        self._mj_data = mujoco.MjData(self._mj_model)
+        self._mjx_model = mjx.put_model(self._mj_model)
 
         n_obs = self._obs_size()
         n_act = self._action_size()
@@ -71,8 +71,8 @@ class MjxVecEnv(VecEnv):
         self._dr_key = dr_key
         self._env_keys = jax.random.split(self._master_key, num_envs)
 
-        self._ctrl_low = jnp.array(self._cpu_model.actuator_ctrlrange[:n_act, 0])
-        self._ctrl_high = jnp.array(self._cpu_model.actuator_ctrlrange[:n_act, 1])
+        self._ctrl_low = jnp.array(self._mj_model.actuator_ctrlrange[:n_act, 0])
+        self._ctrl_high = jnp.array(self._mj_model.actuator_ctrlrange[:n_act, 1])
 
         self._batched_reset = jax.jit(jax.vmap(self._reset_single, in_axes=(None, 0, 0)))
         self._batched_get_obs = jax.jit(jax.vmap(self._get_obs_single, in_axes=(None, 0, 0)))
@@ -120,9 +120,9 @@ class MjxVecEnv(VecEnv):
         raise NotImplementedError
 
     def _sample_dr_params_single(self, key: jax.Array) -> DRParams:
-        nbody = int(self._cpu_model.nbody)
-        ngeom = int(self._cpu_model.ngeom)
-        nu = int(self._cpu_model.nu)
+        nbody = int(self._mj_model.nbody)
+        ngeom = int(self._mj_model.ngeom)
+        nu = int(self._mj_model.nu)
         if not self._dr_config.enabled:
             return DRParams(
                 mass_mult=jnp.ones(nbody),
@@ -335,12 +335,3 @@ class MjxVecEnv(VecEnv):
     def seed(self, seed: int | None = None) -> None:  # type: ignore[override]
         if seed is not None:
             self._master_key = jax.random.PRNGKey(seed)
-
-    def get_cpu_model_data(self) -> tuple[mujoco.MjModel, mujoco.MjData]:
-        if self._mjx_data_batch is not None:
-            qpos_0 = np.asarray(jax.tree.map(lambda x: x[0], self._mjx_data_batch.qpos))
-            qvel_0 = np.asarray(jax.tree.map(lambda x: x[0], self._mjx_data_batch.qvel))
-            self._cpu_data.qpos[:] = qpos_0
-            self._cpu_data.qvel[:] = qvel_0
-            mujoco.mj_forward(self._cpu_model, self._cpu_data)
-        return self._cpu_model, self._cpu_data

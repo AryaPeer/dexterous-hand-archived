@@ -7,12 +7,12 @@ from sbx import PPO
 from stable_baselines3.common.callbacks import CheckpointCallback
 from stable_baselines3.common.vec_env import VecMonitor, VecNormalize
 
-from dexterous_hand.config import MjxReorientTrainConfig
+from dexterous_hand.config import MjxPegTrainConfig
 from dexterous_hand.curriculum.callbacks import (
-    ReorientCurriculumCallback,
+    AssemblyCurriculumCallback,
     scale_stage_starts,
 )
-from dexterous_hand.envs.gpu.reorient_env import ShadowHandReorientMjxEnv
+from dexterous_hand.envs.peg_env import ShadowHandPegMjxEnv
 from scripts.training._common import RewardInfoLoggerCallback, setup_sb3_logger
 
 
@@ -33,21 +33,25 @@ def train(args: SimpleNamespace) -> None:
         run_dir = src.with_name(src.name + "_resumed")
     run_dir.mkdir(parents=True, exist_ok=True)
 
-    config = MjxReorientTrainConfig(num_envs=args.num_envs, seed=args.seed)
+    config = MjxPegTrainConfig(num_envs=args.num_envs, seed=args.seed)
 
+    # Curriculum scaling uses the *original* run's reference timesteps so stage
+    # advances continue at the same cumulative-step boundaries the original
+    # run was anchored to. reset_num_timesteps=False makes model.num_timesteps
+    # cumulative across the resume.
     curriculum_stages = scale_stage_starts(
         stages=config.curriculum_stages,
         total_timesteps=config.total_timesteps,
         reference_total_timesteps=config.curriculum_reference_timesteps,
     )
 
-    vec_env = ShadowHandReorientMjxEnv.from_config(config)
+    vec_env = ShadowHandPegMjxEnv.from_config(config)
     vec_env = VecMonitor(vec_env)
     vec_env = VecNormalize.load(str(vec_norm_path), vec_env)
     vec_env.training = True
     vec_env.norm_reward = config.norm_reward
 
-    curriculum_callback = ReorientCurriculumCallback(
+    curriculum_callback = AssemblyCurriculumCallback(
         stages=curriculum_stages,
         verbose=1,
     )
@@ -84,7 +88,7 @@ def train(args: SimpleNamespace) -> None:
     vec_env.close()
 
 def parse_args() -> SimpleNamespace:
-    parser = argparse.ArgumentParser(description="Resume Shadow Hand reorientation (MJX + SBX PPO)")
+    parser = argparse.ArgumentParser(description="Resume Shadow Hand peg-in-hole (MJX + SBX PPO)")
     parser.add_argument("--model-path", type=str, required=True,
                         help="Path to final_model.zip (or any checkpoint .zip)")
     parser.add_argument("--vec-normalize-path", type=str, required=True,

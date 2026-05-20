@@ -13,7 +13,7 @@ from dexterous_hand.envs.scene_builder import (
     FINGERTIP_SITE_NAMES,
     SensorMap,
 )
-from dexterous_hand.utils.cpu.mujoco_helpers import get_joint_qpos_qvel_range
+from dexterous_hand.utils.mujoco_helpers import get_joint_qpos_qvel_range
 
 
 @dataclass

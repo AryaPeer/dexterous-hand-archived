@@ -12,29 +12,7 @@ import numpy as np
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from dexterous_hand.config import SceneConfig
-from dexterous_hand.envs.scene_builder import GRIP_BIAS, apply_flexion_bias, build_scene
-
-
-def joint_actuator_map(model):
-    out = {}
-    for ai in range(model.nu):
-        if int(model.actuator_trntype[ai]) == mujoco.mjtTrn.mjTRN_JOINT:
-            jid = int(model.actuator_trnid[ai, 0])
-            jname = mujoco.mj_id2name(model, mujoco.mjtObj.mjOBJ_JOINT, jid)
-            if jname:
-                lo, hi = model.actuator_ctrlrange[ai]
-                out[jname] = (ai, float(lo), float(hi))
-    return out
-
-
-def make_grip_ctrl(model):
-    j2a = joint_actuator_map(model)
-    ctrl = np.zeros(model.nu)
-    for jname, target in GRIP_BIAS.items():
-        if jname in j2a:
-            ai, lo, hi = j2a[jname]
-            ctrl[ai] = float(np.clip(target, lo, hi))
-    return ctrl
+from dexterous_hand.envs.scene_builder import apply_flexion_bias, build_grip_ctrl, build_scene
 
 
 cfg = SceneConfig()
@@ -58,7 +36,7 @@ print()
 data.qpos[qadr:qadr + 3] = np.array([0.0, 0.0, obj_z_initial])
 data.qpos[qadr + 3:qadr + 7] = np.array([1, 0, 0, 0])
 data.qvel[:] = 0
-grip_ctrl = make_grip_ctrl(model)
+grip_ctrl = build_grip_ctrl(model)
 data.ctrl[:] = grip_ctrl
 mujoco.mj_forward(model, data)
 zs = []
