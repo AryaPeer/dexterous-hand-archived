@@ -35,17 +35,7 @@ class MjxVecEnv(VecEnv):
         obs_noise_std: float = 0.0,
         dr: DomainRandomization | None = None,
     ) -> None:
-        """Build the batched mjx state, jit/vmap the per-env reset+step+obs functions.
-
-        @param num_envs: number of parallel envs in the batch
-        @type num_envs: int
-        @param seed: PRNG seed
-        @type seed: int
-        @param obs_noise_std: gaussian std added to observations (0 disables)
-        @type obs_noise_std: float
-        @param dr: domain randomization config; None -> disabled
-        @type dr: DomainRandomization | None
-        """
+        """Build the batched mjx state, jit/vmap the per-env reset+step+obs functions."""
 
         self._num_envs = num_envs
         self._seed = seed

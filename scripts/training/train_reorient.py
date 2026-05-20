@@ -128,7 +128,7 @@ def train(config: MjxReorientTrainConfig) -> None:
 def parse_args() -> MjxReorientTrainConfig:
     parser = argparse.ArgumentParser(description="Train Shadow Hand reorientation (MJX + SBX PPO)")
     parser.add_argument("--num-envs", type=int, default=768)
-    parser.add_argument("--total-timesteps", type=int, default=500_000_000)
+    parser.add_argument("--total-timesteps", type=int, default=200_000_000)
     parser.add_argument("--learning-rate", type=float, default=3e-4)
     parser.add_argument("--batch-size", type=int, default=4096)
     parser.add_argument("--n-steps-per-env", type=int, default=128)
@@ -137,8 +137,8 @@ def parse_args() -> MjxReorientTrainConfig:
         "--curriculum-reference-timesteps",
         type=int,
         default=None,
-        help="Reference total for curriculum scaling. Default keeps config value (500M). "
-        "Set to a small value like 30_000_000 with a 3M sanity to pin stage 0 (30°) for the full run.",
+        help="Reference total for curriculum scaling. Default keeps config value (200M). "
+        "Set to a small value like 50_000_000 with a 5M sanity to pin stage 0 (30°) for the full run.",
     )
     args = parser.parse_args()
 

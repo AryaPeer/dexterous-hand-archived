@@ -1,7 +1,7 @@
 # RunPod sanity — peg + reorient (post math-audit fixes)
 
 One block on a fresh pod that runs peg 5M + reorient 5M back-to-back into a
-single log. Validates three concrete bug fixes from the round-9 math audit:
+single log. Validates three concrete bug fixes from the round-10 math audit:
 
 1. **Reorient settle uses GRIP_BIAS ctrl** (was `zero_ctrl`, which opened
    the fingers during the 5-step settle and dropped the cube before the
