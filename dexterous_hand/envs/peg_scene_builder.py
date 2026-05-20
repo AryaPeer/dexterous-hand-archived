@@ -117,6 +117,12 @@ def build_peg_scene(
         axis=[0, 1, 0],
         range=[-0.15, 0.15],
     )
+    slider.add_joint(
+        name="slide_z",
+        type=mujoco.mjtJoint.mjJNT_SLIDE,
+        axis=[0, 0, 1],
+        range=[-0.10, 0.15],
+    )
 
     mount = slider.add_body(
         name="hand_mount",
@@ -145,6 +151,21 @@ def build_peg_scene(
         biasprm=[0, -100, -10, 0, 0, 0, 0, 0, 0, 0],
         ctrlrange=[-0.15, 0.15],
         forcerange=[-15, 15],
+    )
+    # slide_z fights gravity on the entire hand (~4 kg). The slide_x/y actuator
+    # gains (kp=100) leave the hand sagging to its lower bound under load. Use
+    # kp=8000 + matching damping + 250 N force range to hold position with
+    # sub-cm sag while still letting the policy command lifts up to 15cm.
+    spec.add_actuator(
+        name="slide_z_act",
+        target="slide_z",
+        trntype=mujoco.mjtTrn.mjTRN_JOINT,
+        gaintype=mujoco.mjtGain.mjGAIN_FIXED,
+        biastype=mujoco.mjtBias.mjBIAS_AFFINE,
+        gainprm=[8000, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        biasprm=[0, -8000, -250, 0, 0, 0, 0, 0, 0, 0],
+        ctrlrange=[-0.10, 0.15],
+        forcerange=[-250, 250],
     )
 
     hand_xml = str(ASSETS_DIR / "right_hand.xml")

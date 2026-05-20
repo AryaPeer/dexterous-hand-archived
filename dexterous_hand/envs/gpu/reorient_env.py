@@ -15,7 +15,7 @@ from dexterous_hand.config import (
 )
 from dexterous_hand.envs.gpu.mjx_vec_env import MjxVecEnv
 from dexterous_hand.envs.reorient_scene_builder import build_reorient_scene
-from dexterous_hand.envs.scene_builder import GRIP_BIAS, apply_flexion_bias
+from dexterous_hand.envs.scene_builder import GRIP_BIAS, apply_flexion_bias, build_grip_ctrl
 from dexterous_hand.rewards.gpu.reorient_reward import (
     ReorientRewardState,
     init_reorient_reward_state,
@@ -87,6 +87,7 @@ class ShadowHandReorientMjxEnv(MjxVecEnv):
         init_qpos_np = self._cpu_data.qpos.copy()
         apply_flexion_bias(init_qpos_np, self._cpu_model, bias_map=GRIP_BIAS)
         self._init_qpos = jnp.array(init_qpos_np)
+        self._grip_ctrl = jnp.array(build_grip_ctrl(self._cpu_model))
         self._finger_touch_adr = jnp.asarray(
             self._nm.sensor_map.finger_touch_adr, dtype=jnp.int32
         )
@@ -145,8 +146,9 @@ class ShadowHandReorientMjxEnv(MjxVecEnv):
         qpos = mjx_data.qpos.at[s : s + 3].set(cube_pos)
         qpos = qpos.at[s + 3 : s + 7].set(init_quat)
 
-        zero_ctrl = jnp.zeros(mjx_model.nu)
-        mjx_data = mjx_data.replace(qpos=qpos, ctrl=zero_ctrl)
+        # GRIP_BIAS ctrl during settle: ctrl=0 would drive flexion joints to
+        # angle 0 (fully open) and drop the cube before the policy ever acts.
+        mjx_data = mjx_data.replace(qpos=qpos, ctrl=self._grip_ctrl)
 
         def _settle(data: Any, _: Any) -> tuple[Any, None]:
             return mjx.step(mjx_model, data), None

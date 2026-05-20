@@ -51,7 +51,7 @@ class ShadowHandPegEnv(gym.Env):
         # build scene and spaces
         self.model, self.data, self.nm = build_peg_scene(self.scene_config)
 
-        n_obs = 131
+        n_obs = 134
         self.observation_space = spaces.Box(
             low=-np.inf, high=np.inf, shape=(n_obs,), dtype=np.float64
         )

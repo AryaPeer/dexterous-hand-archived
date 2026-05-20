@@ -7,7 +7,7 @@ import dexterous_hand.envs  # noqa: F401 — triggers env registration
 ENV_IDS = [
     ("ShadowHandGrasp-v0", 105),
     ("ShadowHandReorient-v0", 109),
-    ("ShadowHandPeg-v0", 131),
+    ("ShadowHandPeg-v0", 134),
 ]
 
 

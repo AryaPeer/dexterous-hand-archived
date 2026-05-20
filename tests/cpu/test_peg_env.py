@@ -7,10 +7,10 @@ import dexterous_hand.envs  # noqa: F401
 @pytest.mark.slow
 class TestPegEnvSpaces:
     def test_observation_shape(self, peg_env):
-        assert peg_env.observation_space.shape == (131,)
+        assert peg_env.observation_space.shape == (134,)
 
     def test_action_shape(self, peg_env):
-        assert peg_env.action_space.shape == (22,)
+        assert peg_env.action_space.shape == (23,)
 
     def test_action_bounds(self, peg_env):
         assert float(peg_env.action_space.low.min()) == -1.0
@@ -20,7 +20,7 @@ class TestPegEnvSpaces:
 class TestPegEnvReset:
     def test_reset_obs_shape(self, peg_env):
         obs, _ = peg_env.reset(seed=42)
-        assert obs.shape == (131,)
+        assert obs.shape == (134,)
 
     def test_reset_obs_finite(self, peg_env):
         obs, _ = peg_env.reset(seed=42)
@@ -37,7 +37,7 @@ class TestPegEnvStep:
         peg_env.reset(seed=42)
         action = peg_env.action_space.sample()
         obs, reward, terminated, truncated, info = peg_env.step(action)
-        assert obs.shape == (131,)
+        assert obs.shape == (134,)
         assert isinstance(reward, float)
         assert isinstance(terminated, bool)
         assert isinstance(truncated, bool)

@@ -98,7 +98,10 @@ class ReorientRewardConfig:
     min_contacts_for_rotation: int = 1
     angular_progress_clip: float = 0.2
     tracking_k: float = 2.0
-    orientation_contact_alpha: float = 3.0 / 7.0
+    # 0.0 = orientation reward is zero at zero contacts. Was 3/7 which let
+    # an idle hand earn a positive reward floor while the cube sat on the
+    # floor — a do-nothing local minimum.
+    orientation_contact_alpha: float = 0.0
 
 
 @dataclass

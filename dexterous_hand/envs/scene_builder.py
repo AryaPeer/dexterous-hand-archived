@@ -96,6 +96,27 @@ def apply_flexion_bias(
     return qpos
 
 
+def build_grip_ctrl(
+    model: mujoco.MjModel,
+    bias_map: dict[str, float] = GRIP_BIAS,
+) -> np.ndarray:
+    """Return a ctrl vector that drives each `bias_map` joint to its target
+    angle (clipped to the actuator ctrlrange). Non-bias actuators get 0.
+    Used during reset-settle so closed fingers stay closed instead of
+    snapping to ctrl=0 (= fully open for the flexion joints).
+    """
+    ctrl = np.zeros(model.nu, dtype=np.float64)
+    for ai in range(model.nu):
+        if int(model.actuator_trntype[ai]) != mujoco.mjtTrn.mjTRN_JOINT:
+            continue
+        jid = int(model.actuator_trnid[ai, 0])
+        jname = mujoco.mj_id2name(model, mujoco.mjtObj.mjOBJ_JOINT, jid)
+        if jname in bias_map:
+            lo, hi = model.actuator_ctrlrange[ai]
+            ctrl[ai] = float(np.clip(bias_map[jname], lo, hi))
+    return ctrl
+
+
 @dataclass
 class SensorMap:
     finger_touch_adr: list[int]

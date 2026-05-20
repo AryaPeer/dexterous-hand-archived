@@ -16,7 +16,7 @@ from dexterous_hand.config import (
 )
 from dexterous_hand.envs.gpu.mjx_vec_env import MjxVecEnv
 from dexterous_hand.envs.peg_scene_builder import build_peg_scene
-from dexterous_hand.envs.scene_builder import GRIP_BIAS, apply_flexion_bias
+from dexterous_hand.envs.scene_builder import GRIP_BIAS, apply_flexion_bias, build_grip_ctrl
 from dexterous_hand.rewards.gpu.peg_reward import (
     PegRewardState,
     init_peg_reward_state,
@@ -94,7 +94,7 @@ class ShadowHandPegMjxEnv(MjxVecEnv):
         return model
 
     def _obs_size(self) -> int:
-        return 131
+        return 134
 
     def _action_size(self) -> int:
         return int(self._cpu_model.nu)
@@ -113,6 +113,8 @@ class ShadowHandPegMjxEnv(MjxVecEnv):
         init_qpos_grip = self._cpu_data.qpos.copy()
         apply_flexion_bias(init_qpos_grip, self._cpu_model, bias_map=GRIP_BIAS)
         self._init_qpos_grip = jnp.array(init_qpos_grip)
+
+        self._grip_ctrl = jnp.array(build_grip_ctrl(self._cpu_model))
 
         self._grasp_site_id = mujoco.mj_name2id(
             self._cpu_model, mujoco.mjtObj.mjOBJ_SITE, "grasp_site"
@@ -203,8 +205,9 @@ class ShadowHandPegMjxEnv(MjxVecEnv):
         mjx_data = mjx.forward(mjx_model, mjx_data)
 
         # settle contacts before the policy acts: pre-grasp can interpenetrate fingers and NaN under SAC.
-        zero_ctrl = jnp.zeros(mjx_model.nu)
-        mjx_data = mjx_data.replace(ctrl=zero_ctrl)
+        # GRIP_BIAS ctrl keeps flexion joints closed during settle so the peg
+        # doesn't slip out of the pre-grasped pose before step 1.
+        mjx_data = mjx_data.replace(ctrl=self._grip_ctrl)
 
         def _settle(data: Any, _: Any) -> tuple[Any, None]:
             return mjx.step(mjx_model, data), None
