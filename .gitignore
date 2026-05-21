@@ -21,3 +21,8 @@ videos/
 .mypy_cache/
 .ruff_cache/
 .DS_Store
+
+# Secrets
+.env
+.env.*
+!.env.example

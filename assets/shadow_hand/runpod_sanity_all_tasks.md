@@ -1,19 +1,32 @@
 # RunPod sanity — peg + reorient (post math-audit fixes)
 
 One block on a fresh pod that runs peg 5M + reorient 5M back-to-back into a
-single log. Validates three concrete bug fixes from the round-10 math audit:
+single log. The round-10 sanity bundle finished cleanly but failed its pass
+criteria — reorient nfc stuck at 0.135 from iter 1 (cube fell at reset),
+peg grasped but never lifted (peg_height +5mm over 5M, bar +4cm). This
+round-11 bundle validates two further fixes, grounded in published prior
+work (robosuite Lift, Adroit Relocate, Menagerie Shadow Hand keyframes):
 
-1. **Reorient settle uses GRIP_BIAS ctrl** (was `zero_ctrl`, which opened
-   the fingers during the 5-step settle and dropped the cube before the
-   policy ever acted). Peg env had the same bug; both fixed.
-2. **Peg scene has a `slide_z` actuator** (was X/Y only, so the hand could
-   not lift the peg vertically at all — max physical lift from finger flex
-   was 4.4cm against a lift_target of 10cm). Range [-0.10, +0.15], kp=8000,
-   forcerange ±250N. New peg obs_size = 134, new action_size = 23.
-3. **Reorient `orientation_contact_alpha = 0`** (was 3/7, which let an
-   idle hand earn ~0.15/step of "orientation" reward while the cube sat on
-   the floor — a do-nothing local minimum). Now orientation reward is 0
-   at zero contacts.
+1. **`build_grip_ctrl` now drives the four tendon actuators**
+   (`rh_A_FFJ0 / MFJ0 / RFJ0 / LFJ0`). The previous version skipped any
+   actuator whose trntype wasn't `mjTRN_JOINT`, so the four coupled distal
+   joint pairs (FFJ1+FFJ2, etc.) drifted open under gravity during the
+   5-step settle and the pre-grasped cube fell. The new path sums the
+   bias_map across each tendon's wrapped joints and writes the sum as the
+   actuator's ctrl (MuJoCo interprets it as desired tendon length). With
+   GRIP_BIAS this puts ctrl ≈ 2.8 on each of the four tendons; local audit
+   (`scripts/audit_grip_tendon.py`) confirms the cube is held within
+   ±0.75cm of spawn across 200 settle steps.
+2. **Peg `lift_target` reduced from 0.10m to 0.01m.** Lift reward formula
+   is unchanged: `lift = min(lift_height / lift_target, 1.5) * contact_scale`.
+   At the policy's actual operating point (2-5mm lift, nfc=3.8), this
+   sharpens the gradient 10× and lets the lift contribution saturate near
+   the max once the peg clears 1.5cm — matching the lift-vs-grasp reward
+   ratios used in robosuite Lift (lift=9× grasp) and Adroit Relocate
+   (lift=10× reach). Stage-2 gate (`peg_z > initial + 2cm`) is unchanged.
+3. **Reorient `orientation_contact_alpha = 0`** (round-10 fix, retained).
+   Was 3/7; an idle hand could earn ~0.15/step of "orientation" reward
+   while the cube sat on the floor.
 
 Grasp is not in the bundle — its 5M sanity already passed and no relevant
 code path changed.
@@ -118,39 +131,43 @@ metrics aren't worth reading.
 | `train/std`                       | stays in [0.05, ~1.1], never > 1.5 |
 | `train/metrics/nan_rate`          | < 0.01                             |
 
-**Peg (5M) — slide_z + GRIP_BIAS settle test:**
+**Peg (5M) — sharpened lift gradient (`lift_target=0.01`):**
 
 The curriculum at 5M with reference=100M compresses stage starts to
 (0, 400k, 800k, 1.2M, 1.6M). By 1.6M the policy is at max difficulty
 (clearance=1mm, p_pre_grasped=0.2). Measure final-window (last 1M)
 rolling means:
 
-| metric                                          | bar                                      |
-|-------------------------------------------------|------------------------------------------|
-| `train/metrics/peg_height`                      | rising > initial + 0.04 (slide_z used)   |
-| `train/metrics/stage`                           | ≥ 2.0 sustained (lift gate fires)        |
-| `train/metrics/num_finger_contacts`             | ≥ 2.0 sustained                          |
-| `train/metrics/insertion_depth`                 | > 0.001 mean by 5M                       |
-| `train/reward/insertion_drive`                  | > 0 occurring (4-gate finally activating)|
-| `eval/mean_reward`                              | trending up, > 500 by 5M (vs 282 peak)   |
+| metric                                          | round-10 observed       | round-11 bar                              |
+|-------------------------------------------------|-------------------------|-------------------------------------------|
+| `train/metrics/peg_height`                      | +5mm (flat)             | rising > initial + 0.02m by 5M            |
+| `train/metrics/stage`                           | 1.0 (stuck)             | ≥ 2.0 sustained (lift gate fires)         |
+| `train/metrics/num_finger_contacts`             | 3.8 ✓                   | ≥ 2.0 sustained                           |
+| `train/metrics/insertion_depth`                 | 1e-4 (decreasing)       | > 0.001 mean by 5M                        |
+| `train/reward/insertion_drive`                  | 4e-5 (decreasing)       | > 0 occurring                             |
+| `train/reward/lift` (raw)                       | 4e-5                    | ≥ 0.2 sustained once lifted               |
+| `eval/mean_reward`                              | 882                     | trending up, > 1500 by 5M                 |
 
-If `peg_height` stays flat at initial after 1M, slide_z exists but the
-policy hasn't discovered it — possible causes: lift weight too low, or
-the policy needs more exploration time. If still flat at 5M, **dig into
-the actuator more before scaling.**
+If `peg_height` still stays flat at initial after 1M with the new
+`lift_target=0.01`, the next step is adding `idle_stage1_penalty`
+(symmetric with `idle_stage0_penalty` but gated on nfc≥2 AND peg_z <
+initial+2cm) or restructuring to robosuite-style max-over-stages.
 
-**Reorient (5M, locked stage 0):**
+**Reorient (5M, locked stage 0) — tendon-aware settle:**
 
-| metric                                            | bar                                |
-|---------------------------------------------------|------------------------------------|
-| `rollout/ep_len_mean`                             | = 400 (no early termination)       |
-| `train/metrics/num_finger_contacts`               | ≥ 1.5 sustained by 1M              |
-| `train/reward/cube_drop`                          | trending toward 0 (cube held)      |
-| `train/metrics/angular_distance`                  | trending DOWN, not drifting up     |
-| `train/metrics/success_steps`                     | > 0.1 by 5M                        |
+| metric                                            | round-10 observed | round-11 bar                          |
+|---------------------------------------------------|-------------------|---------------------------------------|
+| `rollout/ep_len_mean`                             | 400 ✓             | = 400                                 |
+| `train/metrics/num_finger_contacts` (iter 1)      | 0.135             | ≥ 1.0 (cube held from t=0)            |
+| `train/metrics/num_finger_contacts` (by 1M)       | 0.05-0.25         | ≥ 1.5 sustained                       |
+| `train/reward/cube_drop`                          | -13 to -17/step   | trending toward 0                     |
+| `train/metrics/angular_distance`                  | 1.85 (drifting)   | trending DOWN                         |
+| `train/metrics/success_steps`                     | 0                 | > 0.1 by 5M                           |
 
-If `nfc` stays < 0.5 and `cube_drop` stays at -10/step, the settle fix
-didn't land — re-verify `_grip_ctrl` was actually applied during settle.
+If `nfc` at iter 1 is still < 0.5, the tendon-length math in
+`build_grip_ctrl` is wrong — re-run `scripts/audit_grip_tendon.py` to
+verify each of the four tendon actuators reports `ctrl ≈ 2.8` (sum of
+FFJ1+FFJ2 GRIP_BIAS), and that the audit's "cube held" line passes.
 
 ## 6. Cost
 

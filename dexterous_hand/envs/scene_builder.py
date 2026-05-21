@@ -95,16 +95,36 @@ def build_grip_ctrl(
     angle (clipped to the actuator ctrlrange). Non-bias actuators get 0.
     Used during reset-settle so closed fingers stay closed instead of
     snapping to ctrl=0 (= fully open for the flexion joints).
+
+    Handles both joint and tendon actuators. For a tendon actuator (e.g.
+    the Shadow Hand's FFJ0 driving FFJ1+FFJ2), MuJoCo interprets ctrl as
+    the desired tendon length — the linear combination of the coupled
+    joint angles — so we sum bias_map across the joints wrapped by the
+    tendon.
     """
     ctrl = np.zeros(model.nu, dtype=np.float64)
     for ai in range(model.nu):
-        if int(model.actuator_trntype[ai]) != mujoco.mjtTrn.mjTRN_JOINT:
-            continue
-        jid = int(model.actuator_trnid[ai, 0])
-        jname = mujoco.mj_id2name(model, mujoco.mjtObj.mjOBJ_JOINT, jid)
-        if jname in bias_map:
-            lo, hi = model.actuator_ctrlrange[ai]
-            ctrl[ai] = float(np.clip(bias_map[jname], lo, hi))
+        trntype = int(model.actuator_trntype[ai])
+        lo, hi = model.actuator_ctrlrange[ai]
+        if trntype == mujoco.mjtTrn.mjTRN_JOINT:
+            jid = int(model.actuator_trnid[ai, 0])
+            jname = mujoco.mj_id2name(model, mujoco.mjtObj.mjOBJ_JOINT, jid)
+            if jname in bias_map:
+                ctrl[ai] = float(np.clip(bias_map[jname], lo, hi))
+        elif trntype == mujoco.mjtTrn.mjTRN_TENDON:
+            tid = int(model.actuator_trnid[ai, 0])
+            wrap_start = int(model.tendon_adr[tid])
+            wrap_count = int(model.tendon_num[tid])
+            target = 0.0
+            for wi in range(wrap_start, wrap_start + wrap_count):
+                if int(model.wrap_type[wi]) != mujoco.mjtWrap.mjWRAP_JOINT:
+                    continue
+                jid = int(model.wrap_objid[wi])
+                jname = mujoco.mj_id2name(model, mujoco.mjtObj.mjOBJ_JOINT, jid)
+                if jname in bias_map:
+                    target += bias_map[jname]
+            if target > 0.0:
+                ctrl[ai] = float(np.clip(target, lo, hi))
     return ctrl
 
 

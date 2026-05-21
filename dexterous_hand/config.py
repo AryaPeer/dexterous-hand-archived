@@ -171,7 +171,7 @@ class PegRewardConfig:
     depth_reward_scale: float = 10.0
     force_threshold: float = 15.0
     idle_stage0_penalty: float = -0.3
-    lift_target: float = 0.1
+    lift_target: float = 0.01
     lateral_gate_k: float = 5.0
     idle_stage_cutoff: int = 3
     idle_grace_steps: int = 3
