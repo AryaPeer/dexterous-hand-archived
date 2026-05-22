@@ -14,6 +14,7 @@ class PegRewardState(NamedTuple):
     insertion_hold_steps: jnp.ndarray
     initial_peg_height: jnp.ndarray
     idle_steps: jnp.ndarray
+    idle_stage1_steps: jnp.ndarray
 
 
 def init_peg_reward_state(initial_peg_height: float | jnp.ndarray) -> PegRewardState:
@@ -22,6 +23,7 @@ def init_peg_reward_state(initial_peg_height: float | jnp.ndarray) -> PegRewardS
         insertion_hold_steps=jnp.array(0, dtype=jnp.int32),
         initial_peg_height=jnp.asarray(initial_peg_height),
         idle_steps=jnp.array(0, dtype=jnp.int32),
+        idle_stage1_steps=jnp.array(0, dtype=jnp.int32),
     )
 
 
@@ -48,6 +50,9 @@ def peg_reward(
     complete_bonus: float,
     force_threshold: float,
     idle_stage0_penalty: float,
+    idle_stage1_penalty: float = -0.1,
+    idle_stage1_min_contacts: int = 2,
+    lift_step_threshold: float = 0.005,
     lateral_gate_k: float = 10.0,
     idle_stage_cutoff: int = 3,
     success_threshold: float = 0.7,
@@ -93,7 +98,13 @@ def peg_reward(
     grasp = contact_scale * (0.3 + 0.7 * opposition) + tripod_bonus
 
     lift_height = jnp.maximum(peg_height - state.initial_peg_height, 0.0)
-    lift = jnp.minimum(lift_height / lift_target, 1.5) * contact_scale
+    # Step bonus breaks the grasp-and-sit local minimum: PPO sees a
+    # discontinuous reward jump the moment the peg clears lift_step_threshold,
+    # which credit-assigns back to the action that pulled slide_z up. The
+    # proportional term then keeps pulling toward lift_target.
+    lift_step_bonus = jnp.where(lift_height > lift_step_threshold, 1.0, 0.0)
+    lift_proportional = jnp.minimum(lift_height / lift_target, 1.5) * contact_scale
+    lift = lift_step_bonus + lift_proportional
 
     was_lifted_next = state.was_lifted | (lift_height >= lift_target)
 
@@ -149,6 +160,24 @@ def peg_reward(
     idle_raw = jnp.where(new_idle_steps >= idle_grace_steps, idle_stage0_penalty, 0.0)
     idle_penalty = weights.idle_stage0 * idle_raw
 
+    # Grasp-and-sit penalty: fires when the peg is grasped (nfc >= min)
+    # but never leaves the initial pose. Same grace-period pattern as
+    # idle_stage0 so a brief regrasp doesn't trigger it.
+    idle_stage1_active = (
+        (n_contacts >= idle_stage1_min_contacts)
+        & (lift_height < lift_step_threshold)
+        & (stage == 1)
+    )
+    new_idle_stage1_steps = jnp.where(
+        idle_stage1_active,
+        state.idle_stage1_steps + 1,
+        jnp.array(0, dtype=jnp.int32),
+    )
+    idle_stage1_raw = jnp.where(
+        new_idle_stage1_steps >= idle_grace_steps, idle_stage1_penalty, 0.0
+    )
+    idle_stage1_pen = weights.idle_stage1 * idle_stage1_raw
+
     total = (
         weights.reach * reach
         + weights.grasp * grasp
@@ -162,6 +191,7 @@ def peg_reward(
         + weights.action_penalty * action_penalty
         + weights.insertion_drive * insertion_drive
         + idle_penalty
+        + idle_stage1_pen
     )
 
     new_state = PegRewardState(
@@ -169,6 +199,7 @@ def peg_reward(
         insertion_hold_steps=new_hold,
         initial_peg_height=state.initial_peg_height,
         idle_steps=new_idle_steps,
+        idle_stage1_steps=new_idle_stage1_steps,
     )
 
     info = {
@@ -183,6 +214,7 @@ def peg_reward(
         "reward/drop": drop,
         "reward/action_penalty": action_penalty,
         "reward/idle_stage0_penalty": idle_penalty,
+        "reward/idle_stage1_penalty": idle_stage1_pen,
         "reward/insertion_drive": insertion_drive,
         "reward/total": total,
         "metrics/stage": stage.astype(jnp.float32),

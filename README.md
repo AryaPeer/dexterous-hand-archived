@@ -2,7 +2,7 @@
 
 Training a simulated Shadow Hand to solve manipulation tasks with reinforcement learning. Built on MuJoCo 3, MJX (JAX-backed batched physics), and SBX PPO.
 
-The hand has 24 degrees of freedom and learns three tasks: grasping a cube, reorienting a cube in hand, and peg-in-hole insertion. All three policies share a clamped-σ Gaussian actor (see `dexterous_hand/policies/clamped_actor.py`).
+The hand has 24 degrees of freedom and learns two tasks: grasping a cube and peg-in-hole insertion. Both policies share a clamped-σ Gaussian actor (see `dexterous_hand/policies/clamped_actor.py`).
 
 ## Requirements
 
@@ -42,27 +42,20 @@ uv run python main.py train-grasp-mjx --num-envs 768 --total-timesteps 70000000
 
 # Peg-in-hole (PPO, 150M default, 768 envs, assembly curriculum)
 uv run python main.py train-peg-mjx --num-envs 768 --total-timesteps 150000000
-
-# In-hand reorientation (PPO, 200M default, 768 envs, angle curriculum)
-uv run python main.py train-reorient-mjx --num-envs 768 --total-timesteps 200000000
 ```
 
 Each command also has a `resume-*-mjx` counterpart that reloads `final_model.zip` + `vec_normalize.pkl` from a previous run and continues for `--additional-timesteps`. See `assets/shadow_hand/runpod_full_runs.md` §6.
 
 For end-to-end RunPod recipes (setup, env vars, tmux, watcher, pass criteria), see:
 
-* `assets/shadow_hand/runpod_sanity_all_tasks.md` — cheap peg + reorient sanity bundle
-* `assets/shadow_hand/runpod_full_runs.md` — full-budget commands for all three tasks
+* `assets/shadow_hand/runpod_sanity_all_tasks.md` — cheap peg sanity recipe
+* `assets/shadow_hand/runpod_full_runs.md` — full-budget commands for grasp and peg
 
 ## Tasks
 
 ### Grasping
 
 Pick a cube off the table. Actuator set: 22 (X/Y slider + 20 hand joints), obs 105.
-
-### Reorientation
-
-Rotate an in-hand cube to a target quaternion. Actuator set: 20 (no slider — hand mounted, cube starts pre-grasped), obs 109.
 
 ### Peg-in-hole
 

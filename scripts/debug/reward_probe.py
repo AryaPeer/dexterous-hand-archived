@@ -7,7 +7,6 @@ import numpy as np
 from dexterous_hand.config import (
     MjxGraspTrainConfig,
     MjxPegTrainConfig,
-    MjxReorientTrainConfig,
 )
 
 
@@ -24,10 +23,6 @@ def build_env(task: str, num_envs: int, seed: int):
         stage0 = cfg.curriculum_stages[0]
         env.set_curriculum_params(clearance=stage0[1], p_pre_grasped=stage0[2])
         return env
-    if task == "reorient":
-        from dexterous_hand.envs.reorient_env import ShadowHandReorientMjxEnv
-        cfg = MjxReorientTrainConfig(num_envs=num_envs, seed=seed)
-        return ShadowHandReorientMjxEnv.from_config(cfg)
     raise ValueError(f"unknown task: {task!r}")
 
 
@@ -35,7 +30,7 @@ def main() -> None:
     ap = argparse.ArgumentParser(
         description="Random-policy reward probe; flags components dominating |total|."
     )
-    ap.add_argument("--task", choices=["grasp", "peg", "reorient"], required=True)
+    ap.add_argument("--task", choices=["grasp", "peg"], required=True)
     ap.add_argument("--num-envs", type=int, default=32)
     ap.add_argument("--steps", type=int, default=2_000)
     ap.add_argument("--seed", type=int, default=42)

@@ -1,17 +1,10 @@
-import math
-
 from dexterous_hand.config import (
     MjxGraspTrainConfig,
     MjxPegTrainConfig,
-    MjxReorientTrainConfig,
     PegRewardConfig,
     PegRewardWeights,
     PegSceneConfig,
     PegTrainConfig,
-    ReorientRewardConfig,
-    ReorientRewardWeights,
-    ReorientSceneConfig,
-    ReorientTrainConfig,
     RewardConfig,
     RewardWeights,
     SceneConfig,
@@ -51,30 +44,6 @@ class TestConfigDefaults:
         assert len(c.net_arch) == 3
         assert isinstance(c.scene_config, SceneConfig)
         assert isinstance(c.reward_config, RewardConfig)
-
-    def test_reorient_scene_config(self):
-        c = ReorientSceneConfig()
-        assert c.mount_height == 0.4
-        assert c.cube_size == 0.03
-        assert c.action_smoothing_alpha == 0.4
-        assert c.target_min_angle == 0.15
-
-    def test_reorient_reward_config(self):
-        c = ReorientRewardConfig()
-        assert c.success_threshold == 0.2
-        assert c.success_hold_steps == 25
-        assert c.no_contact_penalty == -0.25
-        assert c.angular_progress_clip == 0.2
-
-    def test_reorient_train_config(self):
-        c = ReorientTrainConfig()
-        assert c.gamma == 0.998
-        assert c.ent_coef == 0.0
-        assert isinstance(c.scene_config, ReorientSceneConfig)
-        assert isinstance(c.reward_config, ReorientRewardConfig)
-        assert c.curriculum_reference_timesteps == 400_000_000
-        assert len(c.curriculum_stages) == 3
-        assert c.curriculum_stages[-1][1] == math.radians(180)
 
     def test_peg_scene_config(self):
         c = PegSceneConfig()
@@ -121,7 +90,7 @@ class TestConfigDefaults:
         # Bounds must be valid (min < max) and the init must sit inside the
         # range; the clamped Actor only blocks the runaway if the policy
         # actually starts within the allowed range.
-        for cls in (MjxGraspTrainConfig, MjxReorientTrainConfig, MjxPegTrainConfig):
+        for cls in (MjxGraspTrainConfig, MjxPegTrainConfig):
             c = cls()
             assert c.log_std_min < c.log_std_max
             assert c.log_std_min <= c.log_std_init <= c.log_std_max
@@ -134,10 +103,6 @@ class TestConfigDefaults:
             RewardWeights,
             RewardConfig,
             TrainConfig,
-            ReorientSceneConfig,
-            ReorientRewardWeights,
-            ReorientRewardConfig,
-            ReorientTrainConfig,
             PegSceneConfig,
             PegRewardWeights,
             PegRewardConfig,

@@ -4,19 +4,15 @@ USAGE = """\
 Usage: python main.py <command> [options]
 
   train-grasp-mjx        Train grasping (SBX PPO on MJX)
-  train-reorient-mjx     Train reorientation (SBX PPO on MJX)
   train-peg-mjx          Train peg-in-hole (SBX PPO on MJX)
   resume-grasp-mjx       Resume grasping from a saved checkpoint
-  resume-reorient-mjx    Resume reorientation from a saved checkpoint
   resume-peg-mjx         Resume peg-in-hole from a saved checkpoint
 """
 
 COMMANDS = {
     "train-grasp-mjx": "scripts.training.train_grasp",
-    "train-reorient-mjx": "scripts.training.train_reorient",
     "train-peg-mjx": "scripts.training.train_peg",
     "resume-grasp-mjx": "scripts.training.resume_grasp",
-    "resume-reorient-mjx": "scripts.training.resume_reorient",
     "resume-peg-mjx": "scripts.training.resume_peg",
 }
 

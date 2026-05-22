@@ -1,5 +1,4 @@
 from dataclasses import dataclass, field
-import math
 
 
 @dataclass
@@ -77,77 +76,6 @@ class TrainConfig:
 
 
 @dataclass
-class ReorientRewardWeights:
-    angular_progress: float = 5.0
-    orientation: float = 7.0
-    cube_drop: float = 5.0
-    action_penalty: float = 1.0
-    contact_bonus: float = 0.3
-    no_contact: float = 0.2
-
-
-@dataclass
-class ReorientRewardConfig:
-    weights: ReorientRewardWeights = field(default_factory=ReorientRewardWeights)
-    success_threshold: float = 0.2
-    success_hold_steps: int = 25
-    drop_penalty: float = -20.0
-    drop_height_offset: float = 0.05
-    contact_bonus: float = 0.5
-    no_contact_penalty: float = -0.25
-    min_contacts_for_rotation: int = 1
-    angular_progress_clip: float = 0.2
-    tracking_k: float = 2.0
-    # 0.0 = orientation reward is zero at zero contacts. Was 3/7 which let
-    # an idle hand earn a positive reward floor while the cube sat on the
-    # floor — a do-nothing local minimum.
-    orientation_contact_alpha: float = 0.0
-
-
-@dataclass
-class ReorientSceneConfig:
-    mount_height: float = 0.4
-    cube_size: float = 0.03
-    cube_mass: float = 0.1
-    cube_friction: tuple[float, float, float] = (1.0, 0.005, 0.001)
-    action_smoothing_alpha: float = 0.4
-    target_min_angle: float = 0.15
-    sim_timestep: float = 0.002
-    frame_skip: int = 20
-
-
-@dataclass
-class ReorientTrainConfig:
-    n_envs: int = 256
-    total_timesteps: int = 400_000_000
-    learning_rate: float = 3e-4
-    batch_size: int = 4096
-    n_steps_per_env: int = 128
-    n_epochs: int = 5
-    gamma: float = 0.998
-    gae_lambda: float = 0.95
-    clip_range: float = 0.2
-    ent_coef: float = 0.0
-    vf_coef: float = 0.5
-    max_grad_norm: float = 0.5
-    net_arch: list[int] = field(default_factory=lambda: [256, 256, 256])
-    activation: str = "elu"
-    seed: int = 42
-    norm_obs: bool = True
-    norm_reward: bool = True
-    scene_config: ReorientSceneConfig = field(default_factory=ReorientSceneConfig)
-    reward_config: ReorientRewardConfig = field(default_factory=ReorientRewardConfig)
-    curriculum_reference_timesteps: int = 400_000_000
-    curriculum_stages: list[tuple[int, float]] = field(
-        default_factory=lambda: [
-            (0, math.radians(30)),
-            (20_000_000, math.radians(90)),
-            (60_000_000, math.radians(180)),
-        ]
-    )
-
-
-@dataclass
 class PegRewardWeights:
     reach: float = 0.2
     grasp: float = 2.0
@@ -160,6 +88,7 @@ class PegRewardWeights:
     drop: float = 1.0
     action_penalty: float = 1.0
     idle_stage0: float = 1.0
+    idle_stage1: float = 1.0
     insertion_drive: float = 3.0
 
 
@@ -171,7 +100,17 @@ class PegRewardConfig:
     depth_reward_scale: float = 10.0
     force_threshold: float = 15.0
     idle_stage0_penalty: float = -0.3
-    lift_target: float = 0.01
+    # Lift reward = step bonus (1.0 if lift_height > lift_step_threshold) +
+    # proportional term (min(lift_height/lift_target, 1.5) * contact_scale).
+    # The step bonus breaks the round-11 grasp-and-sit local minimum by
+    # giving PPO an immediate non-zero gradient at the moment of lift-off.
+    lift_target: float = 0.05
+    lift_step_threshold: float = 0.005
+    # Mirror of idle_stage0_penalty but for "grasp without lift" — fires
+    # when nfc >= idle_stage1_min_contacts AND lift_height < lift_step_threshold
+    # AND stage == 1. Cap at idle_grace_steps to avoid double-jeopardy.
+    idle_stage1_penalty: float = -0.1
+    idle_stage1_min_contacts: int = 2
     lateral_gate_k: float = 5.0
     idle_stage_cutoff: int = 3
     idle_grace_steps: int = 3
@@ -265,43 +204,6 @@ class MjxGraspTrainConfig:
     scene_config: SceneConfig = field(default_factory=SceneConfig)
     reward_config: RewardConfig = field(default_factory=RewardConfig)
     dr: DomainRandomization = field(default_factory=DomainRandomization)
-
-
-@dataclass
-class MjxReorientTrainConfig:
-    num_envs: int = 768
-    total_timesteps: int = 200_000_000
-    learning_rate: float = 3e-4
-    batch_size: int = 4096
-    n_steps_per_env: int = 128
-    n_epochs: int = 5
-    gamma: float = 0.998
-    gae_lambda: float = 0.95
-    clip_range: float = 0.2
-    ent_coef: float = 0.0
-    vf_coef: float = 0.5
-    max_grad_norm: float = 0.5
-    net_arch: list[int] = field(default_factory=lambda: [256, 256, 256])
-    activation: str = "elu"
-    seed: int = 42
-    norm_obs: bool = True
-    norm_reward: bool = True
-    obs_noise_std: float = 0.005
-    max_episode_steps: int = 400
-    log_std_init: float = 0.0
-    log_std_min: float = -3.0
-    log_std_max: float = 0.0
-    scene_config: ReorientSceneConfig = field(default_factory=ReorientSceneConfig)
-    reward_config: ReorientRewardConfig = field(default_factory=ReorientRewardConfig)
-    dr: DomainRandomization = field(default_factory=DomainRandomization)
-    curriculum_reference_timesteps: int = 200_000_000
-    curriculum_stages: list[tuple[int, float]] = field(
-        default_factory=lambda: [
-            (0, math.radians(30)),
-            (20_000_000, math.radians(90)),
-            (60_000_000, math.radians(180)),
-        ]
-    )
 
 
 def _mjx_peg_reward_config() -> PegRewardConfig:

@@ -39,42 +39,6 @@ def scale_stage_starts(
     return scaled_stages
 
 
-class ReorientCurriculumCallback(BaseCallback):
-    def __init__(self, stages: list[tuple[int, float]], verbose: int = 0) -> None:
-        super().__init__(verbose)
-        self.stages = stages
-        self._current_stage = 0
-
-    def _on_training_start(self) -> None:
-        if not self.stages:
-            return
-
-        max_angle = self.stages[0][1]
-        self.training_env.env_method("set_curriculum_stage", max_angle)
-
-        if self.verbose:
-            logger.info("[Curriculum] Stage 0: max_angle=%.2f rad at step 0", max_angle)
-
-    def _on_step(self) -> bool:
-        while (
-            self._current_stage < len(self.stages) - 1
-            and self.num_timesteps >= self.stages[self._current_stage + 1][0]
-        ):
-            self._current_stage += 1
-            max_angle = self.stages[self._current_stage][1]
-            self.training_env.env_method("set_curriculum_stage", max_angle)
-
-            if self.verbose:
-                logger.info(
-                    "[Curriculum] Stage %d: max_angle=%.2f rad at step %d",
-                    self._current_stage,
-                    max_angle,
-                    self.num_timesteps,
-                )
-
-        return True
-
-
 class AssemblyCurriculumCallback(BaseCallback):
     def __init__(self, stages: list[tuple[int, float, float]], verbose: int = 0) -> None:
         super().__init__(verbose)

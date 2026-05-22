@@ -5,7 +5,7 @@ import pytest
 jax = pytest.importorskip("jax")
 jnp = pytest.importorskip("jax.numpy")
 
-from dexterous_hand.config import PegRewardConfig, ReorientRewardConfig, RewardConfig  # noqa: E402
+from dexterous_hand.config import PegRewardConfig, RewardConfig  # noqa: E402
 from dexterous_hand.rewards.grasp_reward import (  # noqa: E402
     grasp_reward,
     init_grasp_reward_state,
@@ -13,10 +13,6 @@ from dexterous_hand.rewards.grasp_reward import (  # noqa: E402
 from dexterous_hand.rewards.peg_reward import (  # noqa: E402
     init_peg_reward_state,
     peg_reward,
-)
-from dexterous_hand.rewards.reorient_reward import (  # noqa: E402
-    init_reorient_reward_state,
-    reorient_reward,
 )
 
 
@@ -122,105 +118,6 @@ class TestGraspJax:
         _, final_state, info = grasp_reward(state=new_state, **kw)
                                                                       
         assert float(info["reward/drop"]) < 0.0
-
-class TestReorientJax:
-    def _kw(self) -> dict:
-        cfg = ReorientRewardConfig()
-        return dict(
-            cube_quat=jnp.array([1.0, 0.0, 0.0, 0.0]),
-            target_quat=jnp.array([1.0, 0.0, 0.0, 0.0]),
-            cube_pos=jnp.zeros(3),
-            cube_linvel=jnp.zeros(3),
-            finger_positions=jnp.zeros((5, 3)),
-            finger_contact_mask=jnp.array([True, True, True, False, False]),
-            actions=jnp.zeros(22),
-            previous_actions=jnp.zeros(22),
-            drop_factor=jnp.array(0.0),
-            weights=cfg.weights,
-            success_threshold=cfg.success_threshold,
-            success_hold_steps=cfg.success_hold_steps,
-            drop_penalty_value=cfg.drop_penalty,
-            contact_bonus_value=cfg.contact_bonus,
-            no_contact_penalty_value=cfg.no_contact_penalty,
-            min_contacts_for_rotation=cfg.min_contacts_for_rotation,
-            angular_progress_clip=cfg.angular_progress_clip,
-            tracking_k=cfg.tracking_k,
-            orientation_contact_alpha=cfg.orientation_contact_alpha,
-        )
-
-    def test_jit_compiles(self):
-        cfg = ReorientRewardConfig()
-
-        @jax.jit
-        def _run(
-            state,
-            cube_quat,
-            target_quat,
-            cube_pos,
-            cube_linvel,
-            finger_positions,
-            finger_contact_mask,
-            actions,
-            previous_actions,
-            drop_factor,
-        ):
-            return reorient_reward(
-                state=state,
-                cube_quat=cube_quat,
-                target_quat=target_quat,
-                cube_pos=cube_pos,
-                cube_linvel=cube_linvel,
-                finger_positions=finger_positions,
-                finger_contact_mask=finger_contact_mask,
-                actions=actions,
-                previous_actions=previous_actions,
-                drop_factor=drop_factor,
-                weights=cfg.weights,
-                success_threshold=cfg.success_threshold,
-                success_hold_steps=cfg.success_hold_steps,
-                drop_penalty_value=cfg.drop_penalty,
-                contact_bonus_value=cfg.contact_bonus,
-                no_contact_penalty_value=cfg.no_contact_penalty,
-                min_contacts_for_rotation=cfg.min_contacts_for_rotation,
-                angular_progress_clip=cfg.angular_progress_clip,
-                tracking_k=cfg.tracking_k,
-                orientation_contact_alpha=cfg.orientation_contact_alpha,
-            )
-
-        state = init_reorient_reward_state(jnp.zeros(3))
-        total, _, info, _ = _run(
-            state,
-            jnp.array([1.0, 0.0, 0.0, 0.0]),
-            jnp.array([1.0, 0.0, 0.0, 0.0]),
-            jnp.zeros(3),
-            jnp.zeros(3),
-            jnp.zeros((5, 3)),
-            jnp.array([True, True, True, False, False]),
-            jnp.zeros(22),
-            jnp.zeros(22),
-            jnp.array(0.0),
-        )
-        assert np.isfinite(float(total))
-        assert float(info["metrics/angular_distance"]) < 1e-5
-
-    def test_success_hold_counter_increments(self):
-        kw = self._kw()
-        state = init_reorient_reward_state(jnp.zeros(3))
-        for _ in range(3):
-            _, state, _, _ = reorient_reward(state=state, **kw)
-        assert int(state.success_steps) == 3
-
-    def test_vmap_over_batch(self):
-        kw = self._kw()
-        B = 4
-
-        def _one(state):
-            total, _, _, _ = reorient_reward(state=state, **kw)
-            return total
-
-        states = jax.vmap(lambda z: init_reorient_reward_state(jnp.zeros(3)))(jnp.arange(B))
-        totals = jax.vmap(_one)(states)
-        assert totals.shape == (B,)
 
 class TestPegJax:
     def _kw(self) -> dict:
