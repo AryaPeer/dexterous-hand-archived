@@ -98,11 +98,18 @@ def peg_reward(
     grasp = contact_scale * (0.3 + 0.7 * opposition) + tripod_bonus
 
     lift_height = jnp.maximum(peg_height - state.initial_peg_height, 0.0)
-    # Step bonus breaks the grasp-and-sit local minimum: PPO sees a
-    # discontinuous reward jump the moment the peg clears lift_step_threshold,
-    # which credit-assigns back to the action that pulled slide_z up. The
-    # proportional term then keeps pulling toward lift_target.
-    lift_step_bonus = jnp.where(lift_height > lift_step_threshold, 1.0, 0.0)
+    # Round-13: smooth ramp instead of binary step. Round-12's `jnp.where`
+    # step bonus broke the grasp-and-sit basin but produced a discontinuity
+    # that added variance to the value function near the threshold; combined
+    # with norm_reward=False it contributed to value-fn divergence and
+    # eventual regression. Ramp is 0 at lift_height ≤ 0.5*threshold, 1.0 at
+    # ≥ threshold, linear between — preserves the "reward fires on lift-off"
+    # gradient without the discontinuity.
+    lift_step_bonus = jnp.clip(
+        (lift_height - 0.5 * lift_step_threshold) / (0.5 * lift_step_threshold),
+        0.0,
+        1.0,
+    )
     lift_proportional = jnp.minimum(lift_height / lift_target, 1.5) * contact_scale
     lift = lift_step_bonus + lift_proportional
 

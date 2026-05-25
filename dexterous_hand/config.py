@@ -192,7 +192,10 @@ class MjxGraspTrainConfig:
     activation: str = "elu"
     seed: int = 42
     norm_obs: bool = True
-    norm_reward: bool = False
+    # Round-13: enabled. With it off, value_loss grew 130× (469→61k) over
+    # 43M steps as reward magnitudes climbed, value function diverged, and
+    # task metrics regressed from peak at 28.9M.
+    norm_reward: bool = True
     obs_noise_std: float = 0.005
     max_episode_steps: int = 200
     # log_std clamp on the Gaussian policy. Default: σ ∈ [0.05, 1.0].
@@ -228,7 +231,10 @@ class MjxPegTrainConfig:
     activation: str = "elu"
     seed: int = 42
     norm_obs: bool = True
-    norm_reward: bool = False
+    # Round-13: enabled. Same reasoning as grasp config — round-12 peg
+    # regressed from peg_height +147mm at 13M back toward grasp-and-sit by
+    # 48M with value_loss climbing similarly.
+    norm_reward: bool = True
     obs_noise_std: float = 0.005
     max_episode_steps: int = 500
     log_std_init: float = 0.0
