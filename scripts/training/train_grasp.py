@@ -62,7 +62,12 @@ def train(config: MjxGraspTrainConfig) -> None:
         ent_coef=config.ent_coef,
         vf_coef=config.vf_coef,
         max_grad_norm=config.max_grad_norm,
-        target_kl=0.02,
+        # Round-14: raised from 0.02 to 0.05. Round-13 grasp 50M run
+        # plateaued at success_hold_steps≈5.6 with adaptive LR collapsed
+        # to 5e-5 because target_kl=0.02 was being hit constantly under
+        # normalized rewards. 0.05 keeps LR near 3e-4 so learning
+        # continues past the early plateau.
+        target_kl=0.05,
         policy_kwargs={
             "net_arch": dict(pi=config.net_arch.copy(), vf=config.net_arch.copy()),
             "activation_fn": activation_fn,

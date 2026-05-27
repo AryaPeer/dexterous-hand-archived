@@ -79,7 +79,12 @@ def train(config: MjxPegTrainConfig) -> None:
         ent_coef=config.ent_coef,
         vf_coef=config.vf_coef,
         max_grad_norm=config.max_grad_norm,
-        target_kl=0.02,
+        # Round-14: raised from 0.02 to 0.05. With norm_reward=True the
+        # advantage scale changes and KL grows faster per update, which
+        # tripped the adaptive-LR throttle in round-13 (LR collapsed to
+        # 5e-5 by 50M on grasp, stalling learning). 0.05 keeps a real
+        # safety bound while letting LR stay near the 3e-4 starting point.
+        target_kl=0.05,
         policy_kwargs={
             "net_arch": dict(pi=config.net_arch.copy(), vf=config.net_arch.copy()),
             "activation_fn": activation_fn,

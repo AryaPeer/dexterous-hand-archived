@@ -98,18 +98,14 @@ def peg_reward(
     grasp = contact_scale * (0.3 + 0.7 * opposition) + tripod_bonus
 
     lift_height = jnp.maximum(peg_height - state.initial_peg_height, 0.0)
-    # Round-13: smooth ramp instead of binary step. Round-12's `jnp.where`
-    # step bonus broke the grasp-and-sit basin but produced a discontinuity
-    # that added variance to the value function near the threshold; combined
-    # with norm_reward=False it contributed to value-fn divergence and
-    # eventual regression. Ramp is 0 at lift_height ≤ 0.5*threshold, 1.0 at
-    # ≥ threshold, linear between — preserves the "reward fires on lift-off"
-    # gradient without the discontinuity.
-    lift_step_bonus = jnp.clip(
-        (lift_height - 0.5 * lift_step_threshold) / (0.5 * lift_step_threshold),
-        0.0,
-        1.0,
-    )
+    # Round-14: back to the binary step bonus. The round-13 smooth ramp
+    # removed the discontinuity that round-12 specifically used to escape
+    # the grasp-and-sit basin, and the round-13 67M peg run stayed stuck
+    # at +43mm lift forever as a result. The original concern (the binary
+    # discontinuity drives value-function divergence) is solved by
+    # `norm_reward=True` independently — VecNormalize bounds the variance
+    # contribution before PPO sees it.
+    lift_step_bonus = jnp.where(lift_height > lift_step_threshold, 1.0, 0.0)
     lift_proportional = jnp.minimum(lift_height / lift_target, 1.5) * contact_scale
     lift = lift_step_bonus + lift_proportional
 

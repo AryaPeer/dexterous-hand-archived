@@ -44,12 +44,13 @@ uv run python main.py train-grasp-mjx --num-envs 768 --total-timesteps 70000000
 uv run python main.py train-peg-mjx --num-envs 768 --total-timesteps 150000000
 ```
 
-Each command also has a `resume-*-mjx` counterpart that reloads `final_model.zip` + `vec_normalize.pkl` from a previous run and continues for `--additional-timesteps`. See `assets/shadow_hand/runpod_full_runs.md` §6.
+Each command also has a `resume-*-mjx` counterpart that reloads `final_model.zip` + `vec_normalize.pkl` from a previous run and continues for `--additional-timesteps`. See §8 of `runpod_peg_full.md` or §7 of `runpod_grasp_full.md`.
 
 For end-to-end RunPod recipes (setup, env vars, tmux, watcher, pass criteria), see:
 
 * `assets/shadow_hand/runpod_sanity_all_tasks.md` — cheap peg sanity recipe
-* `assets/shadow_hand/runpod_full_runs.md` — full-budget commands for grasp and peg
+* `assets/shadow_hand/runpod_peg_full.md` — peg 150M full run (with 30M gate)
+* `assets/shadow_hand/runpod_grasp_full.md` — grasp 70M full run
 
 ## Tasks
 

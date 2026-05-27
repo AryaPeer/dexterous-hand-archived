@@ -38,7 +38,7 @@ def train(args: SimpleNamespace) -> None:
     vec_env.norm_reward = config.norm_reward
 
     model = PPO.load(str(model_path), env=vec_env)
-    model.target_kl = 0.02
+    model.target_kl = 0.05
 
     setup_sb3_logger(model, run_dir)
 

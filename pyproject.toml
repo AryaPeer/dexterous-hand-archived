@@ -22,7 +22,12 @@ dependencies = [
 mjx = [
     "mujoco-mjx>=3.7.0",
     "sbx-rl>=0.25.0",
-    "jax[cuda12]>=0.4.26",
+    # Capped below 0.5 because RunPod's 5090 fleet currently ships driver
+    # 570.195 across most hosts, and JAX 0.5.x bundles cuDNN 9.8 which
+    # needs driver >= 575 (fails with CUDNN_STATUS_NOT_INITIALIZED). JAX
+    # 0.4.x bundles cuDNN 9.5/9.6 which works on 570. Unpin once RunPod
+    # standardizes on 575+.
+    "jax[cuda12]>=0.4.30,<0.5.0",
     "flax>=0.9.0",
     "optax>=0.2.3",
     "chex>=0.1.86",

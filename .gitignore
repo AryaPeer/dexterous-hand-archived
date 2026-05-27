@@ -14,6 +14,8 @@ runs/
 wandb/
 videos/
 *.mp4
+*.log
+progress*.csv
 
 # Tooling / IDE
 .claude/
