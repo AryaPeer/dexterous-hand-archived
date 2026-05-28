@@ -151,18 +151,25 @@ class ShadowHandPegMjxEnv(MjxVecEnv):
         qpos = jnp.where(spawn_pre_grasped, self._init_qpos_grip, self._init_qpos_table)
 
         hand_qpos = qpos[nm.hand_qpos_start : nm.hand_qpos_end]
+        # qpos[0]=slide_x, qpos[1]=slide_y are linear (meters), rest is radians.
+        # ±0.05m slider noise was kicking the peg up to 580mm during the 5-step
+        # settle. Zero it out — only the peg XY (random radius) is randomized.
         noise = jax.random.uniform(k1, shape=hand_qpos.shape, minval=-0.05, maxval=0.05)
+        noise = noise.at[0:2].set(0.0)
         qpos = qpos.at[nm.hand_qpos_start : nm.hand_qpos_end].set(hand_qpos + noise)
         qvel = jnp.zeros(mjx_model.nv)
 
         mjx_data = mjx_data.replace(qpos=qpos, qvel=qvel)
         mjx_data = mjx.forward(mjx_model, mjx_data)
 
-        # peg spawn: radial sampling around the hole
+        # peg spawn: radial sampling around the hole, restricted to the forward
+        # hemisphere (theta ∈ [-π/2, +π/2]) so the on-table spawn doesn't drop
+        # the peg into the hand's reset footprint behind the palm. The
+        # pregrasp_xyz branch (theta unused) is unaffected.
         min_r = float(self.scene_config.spawn_min_radius)
         max_r = float(self.scene_config.spawn_max_radius)
         r = jax.random.uniform(k2, minval=min_r, maxval=max_r)
-        theta = jax.random.uniform(k3, minval=0.0, maxval=2.0 * math.pi)
+        theta = jax.random.uniform(k3, minval=-0.5 * math.pi, maxval=0.5 * math.pi)
         hole_x = float(self.scene_config.hole_offset[0])
         hole_y = float(self.scene_config.hole_offset[1])
         table_peg_x = hole_x + r * jnp.cos(theta)

@@ -67,30 +67,26 @@ def grasp_reward(
     weighted_dist = jnp.sum(ft_weights * dists) / jnp.sum(ft_weights)
     reaching = 1.0 - jnp.tanh(reach_tanh_k * weighted_dist)
 
-    thumb_contact = finger_contact_mask[0]
-    others_mask = finger_contact_mask.at[0].set(False)
-    others_count = jnp.sum(others_mask)
-
-    thumb_vec = finger_positions[0] - object_position
-    other_vecs = (finger_positions - object_position) * others_mask[:, None]
-    mean_other_vec = jnp.where(
-        others_count > 0, other_vecs.sum(axis=0) / jnp.maximum(others_count, 1.0), jnp.zeros(3)
-    )
-
-    thumb_n = jnp.linalg.norm(thumb_vec) + 1e-6
-    other_n = jnp.linalg.norm(mean_other_vec) + 1e-6
-    raw_opposition = -jnp.dot(thumb_vec / thumb_n, mean_other_vec / other_n)
-    opposition = jnp.where(
-        thumb_contact & (others_count >= 1),
-        jnp.maximum(raw_opposition, 0.0),
-        0.0,
-    )
+    # side_ratio: fraction of contacting fingers whose tip sits at or below the
+    # object's vertical midpoint (+ a 1.5cm slack). Matches the Apr-10 "working
+    # for everything except spheres" design — rewards any wrap-around, not just
+    # thumb-vs-fingers opposition. With the cube spawned in y ∈ [-0.05, +0.05]
+    # and the thumb sitting at y≈-0.087, the previous thumb-gated opposition
+    # term zeroed out on ~half the cube spawns. side_ratio gives partial credit
+    # for any palm/finger contact pattern that's actually wrapping.
+    finger_z_below = finger_positions[:, 2] <= (object_position[2] + 0.015)
+    side_count = jnp.sum(finger_contact_mask & finger_z_below).astype(jnp.float32)
+    side_ratio = jnp.where(n_contacts > 0, side_count / jnp.maximum(n_contacts, 1.0), 0.0)
 
     contact_scale = jnp.tanh(n_contacts / 2.0)
-    tripod_bonus = 0.5 * (thumb_contact & (others_count >= 2)).astype(jnp.float32)
-    grasping = contact_scale * (0.3 + 0.7 * opposition) + tripod_bonus
+    grasping = contact_scale * (0.3 + 0.7 * side_ratio)
 
-    lifting = jnp.minimum(lift_height / lift_target, 1.5) * contact_scale
+    # Lift gate matches robosuite Lift / Apr-10 grasp: hard 2-contact gate, no
+    # contact_scale attenuation past it. Letting tanh(n/2) scale lifting made
+    # the policy converge to grasp-and-sit because each marginal contact above
+    # 2 still bought additional reward without needing to actually lift.
+    lift_gate = (n_contacts >= 2).astype(jnp.float32)
+    lifting = jnp.minimum(lift_height / lift_target, 1.5) * lift_gate
 
     obj_speed = jnp.linalg.norm(object_linear_velocity)
     height_gate = _sigmoid(hold_height_k * (lift_height - lift_target + 0.04))
@@ -125,7 +121,7 @@ def grasp_reward(
     total = (
         weights.reaching * reaching
         + weights.grasping * grasping
-        + weights.opposition * opposition
+        + weights.opposition * side_ratio
         + weights.lifting * lifting
         + weights.holding * holding
         + weights.drop * drop
@@ -145,7 +141,7 @@ def grasp_reward(
     info = {
         "reward/reaching": reaching,
         "reward/grasping": grasping,
-        "reward/grasp_quality": opposition,
+        "reward/grasp_quality": side_ratio,
         "reward/lifting": lifting,
         "reward/holding": holding,
         "reward/drop": drop,

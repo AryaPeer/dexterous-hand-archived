@@ -17,7 +17,7 @@ class TestConfigDefaults:
         c = SceneConfig()
         assert c.mount_x == -0.10
         assert c.mount_y == 0.0
-        assert c.mount_height == 0.82
+        assert c.mount_height == 0.78
         assert c.sim_timestep == 0.002
         assert c.frame_skip == 20
 
@@ -49,7 +49,7 @@ class TestConfigDefaults:
         c = PegSceneConfig()
         assert c.mount_x == -0.10
         assert c.mount_y == 0.0
-        assert c.mount_height == 0.82
+        assert c.mount_height == 0.78
         assert c.action_smoothing_alpha == 0.2
         assert c.spawn_min_radius == 0.04
         assert c.clearance == 0.004

@@ -72,30 +72,16 @@ def peg_reward(
     weighted_dist = jnp.sum(ft_weights * dists) / jnp.sum(ft_weights)
     reach = 1.0 - jnp.tanh(reach_tanh_k * weighted_dist)
 
-    # grasp quality: thumb opposing the rest
-    thumb_contact = finger_contact_mask[0]
-    others_mask = finger_contact_mask.at[0].set(False)
-    others_count = jnp.sum(others_mask)
-
-    thumb_vec = finger_positions[0] - peg_position
-    other_vecs = (finger_positions - peg_position) * others_mask[:, None]
-    mean_other_vec = jnp.where(
-        others_count > 0,
-        other_vecs.sum(axis=0) / jnp.maximum(others_count, 1.0),
-        jnp.zeros(3),
-    )
-    thumb_n = jnp.linalg.norm(thumb_vec) + 1e-6
-    other_n = jnp.linalg.norm(mean_other_vec) + 1e-6
-    raw_opposition = -jnp.dot(thumb_vec / thumb_n, mean_other_vec / other_n)
-    opposition = jnp.where(
-        thumb_contact & (others_count >= 1),
-        jnp.maximum(raw_opposition, 0.0),
-        0.0,
-    )
+    # grasp quality via side_ratio (Apr-10 commit 215cfa0 design): fraction of
+    # contacting fingers whose tip sits at or below the peg's vertical midpoint
+    # (+ 1.5cm slack). Contact-symmetric — gives partial credit to any wrap-
+    # around, no thumb gate. Matches grasp_reward.py.
+    finger_z_below = finger_positions[:, 2] <= (peg_position[2] + 0.015)
+    side_count = jnp.sum(finger_contact_mask & finger_z_below).astype(jnp.float32)
+    side_ratio = jnp.where(n_contacts > 0, side_count / jnp.maximum(n_contacts, 1.0), 0.0)
 
     contact_scale = jnp.minimum(n_contacts / 3.0, 1.0)
-    tripod_bonus = 0.5 * (thumb_contact & (others_count >= 2)).astype(jnp.float32)
-    grasp = contact_scale * (0.3 + 0.7 * opposition) + tripod_bonus
+    grasp = contact_scale * (0.3 + 0.7 * side_ratio)
 
     lift_height = jnp.maximum(peg_height - state.initial_peg_height, 0.0)
     # Round-14: back to the binary step bonus. The round-13 smooth ramp
@@ -105,8 +91,9 @@ def peg_reward(
     # discontinuity drives value-function divergence) is solved by
     # `norm_reward=True` independently — VecNormalize bounds the variance
     # contribution before PPO sees it.
-    lift_step_bonus = jnp.where(lift_height > lift_step_threshold, 1.0, 0.0)
-    lift_proportional = jnp.minimum(lift_height / lift_target, 1.5) * contact_scale
+    lift_gate = (n_contacts >= 2).astype(jnp.float32)
+    lift_step_bonus = jnp.where(lift_height > lift_step_threshold, 1.0, 0.0) * lift_gate
+    lift_proportional = jnp.minimum(lift_height / lift_target, 1.5) * lift_gate
     lift = lift_step_bonus + lift_proportional
 
     was_lifted_next = state.was_lifted | (lift_height >= lift_target)
@@ -184,7 +171,7 @@ def peg_reward(
     total = (
         weights.reach * reach
         + weights.grasp * grasp
-        + weights.opposition * opposition
+        + weights.opposition * side_ratio
         + weights.lift * lift
         + weights.align * align
         + weights.depth * depth_reward
@@ -208,7 +195,7 @@ def peg_reward(
     info = {
         "reward/reach": reach,
         "reward/grasp": grasp,
-        "reward/grasp_quality": opposition,
+        "reward/grasp_quality": side_ratio,
         "reward/lift": lift,
         "reward/align": align,
         "reward/depth": depth_reward,

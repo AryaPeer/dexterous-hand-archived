@@ -13,7 +13,7 @@ class DomainRandomization:
 class SceneConfig:
     mount_x: float = -0.10
     mount_y: float = 0.0
-    mount_height: float = 0.82
+    mount_height: float = 0.78
     table_height: float = 0.4
     table_half_size: float = 0.25
     object_mass: float = 0.1
@@ -124,7 +124,7 @@ class PegRewardConfig:
 class PegSceneConfig:
     mount_x: float = -0.10
     mount_y: float = 0.0
-    mount_height: float = 0.82
+    mount_height: float = 0.78
     table_height: float = 0.4
     table_half_size: float = 0.25
     clearance: float = 0.004

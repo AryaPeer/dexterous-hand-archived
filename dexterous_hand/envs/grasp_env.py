@@ -100,12 +100,21 @@ class ShadowHandGraspMjxEnv(MjxVecEnv):
         qpos = self._init_qpos
 
         hand_qpos = qpos[nm.hand_qpos_start : nm.hand_qpos_end]
+        # ±0.05 noise on rotational joints is ~3° — fine. On the linear sliders
+        # (qpos[0]=slide_x, qpos[1]=slide_y) it's ±5cm, which combined with the
+        # ±5cm object spawn caused 78% spawn-overlap at the round-15 mount.
+        # Slider start is deterministic; only the object's XY is randomized.
         noise = jax.random.uniform(k1, shape=hand_qpos.shape, minval=-0.05, maxval=0.05)
+        noise = noise.at[0:2].set(0.0)
         qpos = qpos.at[nm.hand_qpos_start : nm.hand_qpos_end].set(hand_qpos + noise)
 
-        # object pose at small random XY offset on the table
-        obj_x = jax.random.uniform(k2, minval=-0.05, maxval=0.05)
-        obj_y = jax.random.uniform(k3, minval=-0.05, maxval=0.05)
+        # Cube spawns forward of the hand's reset footprint. With slider=0 the
+        # hand's fingertip cluster sits around x≈[-0.01, +0.04], y≈[-0.09, +0.06].
+        # Without the forward shift, ~86% of random spawns penetrated the hand
+        # at reset (audit_spawn_collisions.py). x∈[+0.05, +0.10] keeps the cube
+        # clear of fingertips while still inside the slider's +0.15 reach.
+        obj_x = jax.random.uniform(k2, minval=0.05, maxval=0.10)
+        obj_y = jax.random.uniform(k3, minval=-0.03, maxval=0.03)
         obj_z = self.scene_config.table_height + self._object_half_height + 0.001
 
         s = nm.obj_qpos_start
