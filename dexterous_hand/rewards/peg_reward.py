@@ -72,16 +72,33 @@ def peg_reward(
     weighted_dist = jnp.sum(ft_weights * dists) / jnp.sum(ft_weights)
     reach = 1.0 - jnp.tanh(reach_tanh_k * weighted_dist)
 
-    # grasp quality via side_ratio (Apr-10 commit 215cfa0 design): fraction of
-    # contacting fingers whose tip sits at or below the peg's vertical midpoint
-    # (+ 1.5cm slack). Contact-symmetric — gives partial credit to any wrap-
-    # around, no thumb gate. Matches grasp_reward.py.
-    finger_z_below = finger_positions[:, 2] <= (peg_position[2] + 0.015)
-    side_count = jnp.sum(finger_contact_mask & finger_z_below).astype(jnp.float32)
-    side_ratio = jnp.where(n_contacts > 0, side_count / jnp.maximum(n_contacts, 1.0), 0.0)
+    # Round-16: reverted peg back to thumb-opposition (round-15 swapped it to
+    # side_ratio, which rewards fingers at or below peg center — incompatible
+    # with the grip needed for insertion, where the peg must extend below the
+    # fingers). Grasp keeps side_ratio because the cube task is z-symmetric.
+    thumb_contact = finger_contact_mask[0]
+    others_mask = finger_contact_mask.at[0].set(False)
+    others_count = jnp.sum(others_mask)
+
+    thumb_vec = finger_positions[0] - peg_position
+    other_vecs = (finger_positions - peg_position) * others_mask[:, None]
+    mean_other_vec = jnp.where(
+        others_count > 0,
+        other_vecs.sum(axis=0) / jnp.maximum(others_count, 1.0),
+        jnp.zeros(3),
+    )
+    thumb_n = jnp.linalg.norm(thumb_vec) + 1e-6
+    other_n = jnp.linalg.norm(mean_other_vec) + 1e-6
+    raw_opposition = -jnp.dot(thumb_vec / thumb_n, mean_other_vec / other_n)
+    opposition = jnp.where(
+        thumb_contact & (others_count >= 1),
+        jnp.maximum(raw_opposition, 0.0),
+        0.0,
+    )
 
     contact_scale = jnp.minimum(n_contacts / 3.0, 1.0)
-    grasp = contact_scale * (0.3 + 0.7 * side_ratio)
+    tripod_bonus = 0.5 * (thumb_contact & (others_count >= 2)).astype(jnp.float32)
+    grasp = contact_scale * (0.3 + 0.7 * opposition) + tripod_bonus
 
     lift_height = jnp.maximum(peg_height - state.initial_peg_height, 0.0)
     # Round-14: back to the binary step bonus. The round-13 smooth ramp
@@ -98,9 +115,16 @@ def peg_reward(
 
     was_lifted_next = state.was_lifted | (lift_height >= lift_target)
 
+    # Round-16: axis_in_grip rewards holding the peg axis-aligned with the
+    # hole while *any* finger is in contact, before lift. The previous design
+    # only activated axis_align inside the align term, which was gated on
+    # peg_clearance > 2cm (i.e., after lift), so the policy had no signal
+    # against settling into a tilted grip in stage 1.
+    axis_align = jnp.abs(jnp.dot(peg_axis, hole_axis))
+    axis_in_grip = axis_align * contact_scale
+
     # align + insertion drive: gated on peg actually being above the table
     lateral_dist = jnp.linalg.norm(peg_position[:2] - hole_position[:2])
-    axis_align = jnp.abs(jnp.dot(peg_axis, hole_axis))
     lateral_factor_align = 1.0 - jnp.tanh(lateral_gate_k * lateral_dist)
     peg_clearance = jnp.maximum(peg_height - table_height - peg_length * 0.5, 0.0)
     align_weight = _sigmoid((peg_clearance - 0.02) * 150.0)
@@ -171,7 +195,8 @@ def peg_reward(
     total = (
         weights.reach * reach
         + weights.grasp * grasp
-        + weights.opposition * side_ratio
+        + weights.opposition * opposition
+        + weights.axis_in_grip * axis_in_grip
         + weights.lift * lift
         + weights.align * align
         + weights.depth * depth_reward
@@ -195,7 +220,8 @@ def peg_reward(
     info = {
         "reward/reach": reach,
         "reward/grasp": grasp,
-        "reward/grasp_quality": side_ratio,
+        "reward/grasp_quality": opposition,
+        "reward/axis_in_grip": axis_in_grip,
         "reward/lift": lift,
         "reward/align": align,
         "reward/depth": depth_reward,
@@ -214,6 +240,7 @@ def peg_reward(
         "metrics/contact_force": contact_force_magnitude,
         "metrics/lateral_distance": lateral_dist,
         "metrics/insertion_hold_steps": new_hold.astype(jnp.float32),
+        "metrics/axis_align": axis_align,
     }
 
     return total, new_state, info

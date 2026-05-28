@@ -49,11 +49,12 @@ class TestConfigDefaults:
         c = PegSceneConfig()
         assert c.mount_x == -0.10
         assert c.mount_y == 0.0
-        assert c.mount_height == 0.78
+        assert c.mount_height == 0.82
         assert c.action_smoothing_alpha == 0.2
         assert c.spawn_min_radius == 0.04
         assert c.clearance == 0.004
         assert c.hole_depth == 0.06
+        assert c.hole_top_above_table == 0.06
         assert len(c.hole_offset) == 2
         assert c.peg_radius == 0.008
         assert c.peg_half_length == 0.03
@@ -65,6 +66,7 @@ class TestConfigDefaults:
         assert c.force_threshold == 15.0
         assert c.idle_stage0_penalty == -0.3
         assert c.weights.opposition == 1.0
+        assert c.weights.axis_in_grip == 1.0
         assert c.weights.insertion_drive == 3.0
         assert c.lateral_gate_k == 5.0
         assert c.peg_hold_steps == 10

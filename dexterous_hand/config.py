@@ -90,6 +90,12 @@ class PegRewardWeights:
     idle_stage0: float = 1.0
     idle_stage1: float = 1.0
     insertion_drive: float = 3.0
+    # Round-16: rewards abs(dot(peg_axis, hole_axis)) * contact_scale at every
+    # step while in contact, *before* lift. The last peg run (5M steps)
+    # converged to peg held 85deg off vertical because no reward term
+    # incentivized vertical grip until align_weight fired (peg lifted >2cm),
+    # by which time the policy had already settled on a sideways grip.
+    axis_in_grip: float = 1.0
 
 
 @dataclass
@@ -124,11 +130,24 @@ class PegRewardConfig:
 class PegSceneConfig:
     mount_x: float = -0.10
     mount_y: float = 0.0
-    mount_height: float = 0.78
+    # Round-16: reverted 0.78 -> 0.82. The round-15 grasp-driven mount lower
+    # cost peg an extra 2.8mm of slide_z descent before finger-table contact
+    # saturated the actuator (audit: peg_tip stopped at 0.4068m@0.82 vs
+    # 0.4096m@0.78). Grasp's SceneConfig keeps 0.78.
+    mount_height: float = 0.82
     table_height: float = 0.4
     table_half_size: float = 0.25
     clearance: float = 0.004
     hole_depth: float = 0.06
+    # Round-16: lift the hole body so its entrance sits this far above the
+    # table top, forming a guide tube. Fingers + closed-grip pose saturate
+    # slide_z descent with peg_tip ~7-10mm above the table top, so a flush
+    # hole was geometrically unreachable. Scripted-descent ceiling at 60mm
+    # elevation is ~88% insertion (vs 67.7% at 50mm), so the success
+    # threshold of 70% sits comfortably below the physical ceiling.
+    # Matches robosuite NutAssembly / TwoArmPegInHole convention of placing
+    # the receptacle above the workspace surface.
+    hole_top_above_table: float = 0.06
     hole_offset: tuple[float, float] = (0.0, 0.0)
     spawn_min_radius: float = 0.04
     spawn_max_radius: float = 0.05 * 1.4142135623730951

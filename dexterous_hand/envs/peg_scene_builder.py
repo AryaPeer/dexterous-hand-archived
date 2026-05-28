@@ -248,7 +248,12 @@ def build_peg_scene(
 
     hole_x = config.hole_offset[0]
     hole_y = config.hole_offset[1]
-    hole_z = config.table_height
+    # Round-16: lift hole body by hole_top_above_table so its entrance sits
+    # above the table top. Walls extend down by hole_depth; the lower portion
+    # passes through the table but contype/conaffinity bits keep wall/table
+    # non-colliding. Hand-wall collision is also disabled (hand contype=1 vs
+    # wall contype/aff=2), so the hand can grip a peg passing through the tube.
+    hole_z = config.table_height + config.hole_top_above_table
     hole_body = spec.worldbody.add_body(
         name="hole",
         pos=[hole_x, hole_y, hole_z],
