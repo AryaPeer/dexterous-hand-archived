@@ -65,6 +65,16 @@ GRIP_BIAS: dict[str, float] = {
     "rh_MFJ1": 1.4,
     "rh_RFJ1": 1.4,
     "rh_LFJ1": 1.4,
+    # THJ5 (thumb-base opposition rotation) was missing. Without it the thumb
+    # never swung across the palm to oppose the fingers, so the closed grip
+    # touched the peg with only the middle+ring fingers from one side and the
+    # capsule pivoted to ~45° off vertical (axis_align 0.71) even when placed
+    # perfectly upright and held with a constant grip. Driving THJ5 to its
+    # limit brings the thumb into opposition; the CPU hold-render
+    # (scripts/tune_grip_bias.py) measures axis_align 0.71 -> 0.94, stable over
+    # 200 steps, with the thumb now in contact. The residual ~20° is the policy's
+    # to refine (it has full finger + slide_z control during the episode).
+    "rh_THJ5": 1.047,
     "rh_THJ4": 1.2,
     "rh_THJ2": 0.5,
     "rh_THJ1": 1.4,

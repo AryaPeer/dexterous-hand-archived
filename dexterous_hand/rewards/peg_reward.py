@@ -76,11 +76,17 @@ def peg_reward(
     # side_ratio, which rewards fingers at or below peg center — incompatible
     # with the grip needed for insertion, where the peg must extend below the
     # fingers). Grasp keeps side_ratio because the cube task is z-symmetric.
-    thumb_contact = finger_contact_mask[0]
-    others_mask = finger_contact_mask.at[0].set(False)
+    #
+    # The finger ordering is [ff, mf, rf, lf, th] (FINGER_TOUCH_SITE_NAMES /
+    # FINGERTIP_SITE_NAMES), so the thumb is index 4 — NOT index 0. The prior
+    # code keyed opposition+tripod off index 0 (the first finger), which never
+    # contacts the peg in the natural grip, so both terms were dead (always 0).
+    THUMB = 4
+    thumb_contact = finger_contact_mask[THUMB]
+    others_mask = finger_contact_mask.at[THUMB].set(False)
     others_count = jnp.sum(others_mask)
 
-    thumb_vec = finger_positions[0] - peg_position
+    thumb_vec = finger_positions[THUMB] - peg_position
     other_vecs = (finger_positions - peg_position) * others_mask[:, None]
     mean_other_vec = jnp.where(
         others_count > 0,
