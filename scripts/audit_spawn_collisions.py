@@ -15,8 +15,9 @@ both the "peg on table" and "peg in hand" stages.
 from __future__ import annotations
 
 import argparse
-import numpy as np
+
 import mujoco
+import numpy as np
 
 from dexterous_hand.config import PegSceneConfig, SceneConfig
 from dexterous_hand.envs.peg_scene_builder import build_peg_scene
@@ -43,7 +44,7 @@ def grasp_sample(rng: np.random.Generator, n: int = 256) -> dict:
 
     results = []
     overlap_count = 0
-    for i in range(n):
+    for _i in range(n):
         qpos = init_qpos.copy()
         # Mirror env reset: ±0.05 noise on rotational joints, 0 on sliders.
         hand_noise = rng.uniform(-0.05, 0.05, size=nm.hand_qpos_end - nm.hand_qpos_start)
@@ -71,11 +72,10 @@ def grasp_sample(rng: np.random.Generator, n: int = 256) -> dict:
         penetrating = 0
         for ci in range(data.ncon):
             c = data.contact[ci]
-            if (c.geom1 == cube_g and c.geom2 in hand_geoms) or (
+            if ((c.geom1 == cube_g and c.geom2 in hand_geoms) or (
                 c.geom2 == cube_g and c.geom1 in hand_geoms
-            ):
-                if c.dist < -1e-4:  # actual interpenetration
-                    penetrating += 1
+            )) and c.dist < -1e-4:  # actual interpenetration
+                penetrating += 1
         if penetrating > 0:
             overlap_count += 1
 
@@ -124,12 +124,9 @@ def peg_sample(rng: np.random.Generator, n: int = 256, p_pre_grasped: float = 0.
 
     results = []
     overlap_count = 0
-    for i in range(n):
+    for _i in range(n):
         pre_grasped = rng.uniform() < p_pre_grasped
-        if pre_grasped:
-            base_qpos = grip_bias_qpos.copy()
-        else:
-            base_qpos = open_bias_qpos.copy()
+        base_qpos = grip_bias_qpos.copy() if pre_grasped else open_bias_qpos.copy()
 
         qpos = base_qpos.copy()
         # Mirror env reset: ±0.05 noise on rotational joints, 0 on sliders.
@@ -169,11 +166,10 @@ def peg_sample(rng: np.random.Generator, n: int = 256, p_pre_grasped: float = 0.
         penetrating = 0
         for ci in range(data.ncon):
             c = data.contact[ci]
-            if (c.geom1 == peg_g and c.geom2 in hand_geoms) or (
+            if ((c.geom1 == peg_g and c.geom2 in hand_geoms) or (
                 c.geom2 == peg_g and c.geom1 in hand_geoms
-            ):
-                if c.dist < -1e-4:
-                    penetrating += 1
+            )) and c.dist < -1e-4:
+                penetrating += 1
         if penetrating > 0:
             overlap_count += 1
 
@@ -221,14 +217,14 @@ def main() -> None:
     print(f"  min finger-cube distance:  p5={g['min_dist_p5']*1000:.1f}mm  p50={g['min_dist_p50']*1000:.1f}mm  p95={g['min_dist_p95']*1000:.1f}mm")
     print(f"  settle obj displacement:   p50={g['settle_disp_p50']*1000:.2f}mm  p95={g['settle_disp_p95']*1000:.2f}mm  max={g['settle_disp_max']*1000:.2f}mm")
 
-    print(f"\n=== PEG env, p_pre_grasped=0.0 (peg on table) ===")
+    print("\n=== PEG env, p_pre_grasped=0.0 (peg on table) ===")
     rng2 = np.random.default_rng(args.seed + 1)
     p0 = peg_sample(rng2, n=args.n, p_pre_grasped=0.0)
     print(f"  n_overlapping: {p0['n_overlapping']} / {p0['n_samples']} ({100*p0['n_overlapping']/p0['n_samples']:.1f}%)")
     print(f"  min finger-peg distance:  p5={p0['min_dist_p5']*1000:.1f}mm  p50={p0['min_dist_p50']*1000:.1f}mm  p95={p0['min_dist_p95']*1000:.1f}mm")
     print(f"  settle peg displacement:   p50={p0['settle_disp_p50']*1000:.2f}mm  p95={p0['settle_disp_p95']*1000:.2f}mm  max={p0['settle_disp_max']*1000:.2f}mm")
 
-    print(f"\n=== PEG env, p_pre_grasped=1.0 (peg in grip) ===")
+    print("\n=== PEG env, p_pre_grasped=1.0 (peg in grip) ===")
     rng3 = np.random.default_rng(args.seed + 2)
     p1 = peg_sample(rng3, n=args.n, p_pre_grasped=1.0)
     print(f"  n_overlapping: {p1['n_overlapping']} / {p1['n_samples']} ({100*p1['n_overlapping']/p1['n_samples']:.1f}%)")

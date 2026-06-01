@@ -2,7 +2,6 @@ from dataclasses import dataclass, field
 import math
 
 import mujoco
-import numpy as np
 
 from dexterous_hand.config import PegSceneConfig
 from dexterous_hand.envs.scene_builder import (
@@ -20,28 +19,20 @@ from dexterous_hand.utils.mujoco_helpers import get_joint_qpos_qvel_range
 @dataclass
 class PegNameMap:
     hand_joint_ids: list[int]
-    hand_actuator_ids: list[int]
     hand_qpos_start: int
     hand_qpos_end: int
     hand_qvel_start: int
     hand_qvel_end: int
-    n_actuators: int
-    ctrl_ranges: np.ndarray
 
     palm_body_id: int
     fingertip_site_ids: list[int]
-    fingertip_geom_ids: set[int]
     finger_geom_ids_per_finger: list[set[int]]
-    table_geom_id: int
 
     peg_body_id: int
     peg_geom_id: int
     peg_qpos_start: int
     peg_qvel_start: int
     hole_body_id: int
-    hole_wall_geom_ids: list[int] = field(default_factory=list)
-    hole_pos: np.ndarray = field(default_factory=lambda: np.zeros(3))
-    hole_quat: np.ndarray = field(default_factory=lambda: np.array([1.0, 0.0, 0.0, 0.0]))
     sensor_map: SensorMap = field(default_factory=SensorMap.empty)
 
 
@@ -330,12 +321,12 @@ def build_peg_scene(
 
     model = spec.compile()
     data = mujoco.MjData(model)
-    name_map = _resolve_peg_names(model, config)
+    name_map = _resolve_peg_names(model)
 
     return model, data, name_map
 
 
-def _resolve_peg_names(model: mujoco.MjModel, config: PegSceneConfig) -> PegNameMap:
+def _resolve_peg_names(model: mujoco.MjModel) -> PegNameMap:
     # peg freejoint
     peg_jnt_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_JOINT, "peg_freejoint")
     peg_qpos_start = model.jnt_qposadr[peg_jnt_id]
@@ -356,29 +347,12 @@ def _resolve_peg_names(model: mujoco.MjModel, config: PegSceneConfig) -> PegName
         hand_qpos_start = hand_qpos_end = 0
         hand_qvel_start = hand_qvel_end = 0
 
-    # actuators
-    hand_actuator_ids = list(range(model.nu))
-    ctrl_ranges = model.actuator_ctrlrange[: model.nu].copy()
-    n_actuators = model.nu
-
     palm_body_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, "rh_palm")
 
     # fingertips
     fingertip_site_ids = [
         mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_SITE, name) for name in FINGERTIP_SITE_NAMES
     ]
-
-    fingertip_geom_ids: set[int] = set()
-    fingertip_body_ids = set()
-
-    for body_name in FINGERTIP_BODIES:
-        bid = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, body_name)
-        if bid >= 0:
-            fingertip_body_ids.add(bid)
-
-    for gid in range(model.ngeom):
-        if model.geom_bodyid[gid] in fingertip_body_ids:
-            fingertip_geom_ids.add(gid)
 
     finger_geom_ids_per_finger: list[set[int]] = [set() for _ in FINGER_BODY_PREFIXES]
     for gid in range(model.ngeom):
@@ -392,17 +366,10 @@ def _resolve_peg_names(model: mujoco.MjModel, config: PegSceneConfig) -> PegName
                 finger_geom_ids_per_finger[finger_idx].add(gid)
                 break
 
-    # peg + hole + table
-    table_geom_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_GEOM, "table_geom")
+    # peg + hole
     peg_body_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, "peg")
     peg_geom_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_GEOM, "peg_geom")
     hole_body_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, "hole")
-
-    wall_names = ["hole_wall_px", "hole_wall_nx", "hole_wall_py", "hole_wall_ny", "hole_bottom"]
-    hole_wall_geom_ids = [mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_GEOM, n) for n in wall_names]
-
-    hole_pos = np.array([config.hole_offset[0], config.hole_offset[1], config.table_height])
-    hole_quat = np.array([1.0, 0.0, 0.0, 0.0])
 
     # sensors
     finger_touch_adr = []
@@ -426,31 +393,22 @@ def _resolve_peg_names(model: mujoco.MjModel, config: PegSceneConfig) -> PegName
 
     sensor_map = SensorMap(
         finger_touch_adr=finger_touch_adr,
-        n_sensors=model.nsensor,
         wall_force_adr=wall_force_adr,
     )
 
     return PegNameMap(
         hand_joint_ids=hand_joint_ids,
-        hand_actuator_ids=hand_actuator_ids,
         hand_qpos_start=hand_qpos_start,
         hand_qpos_end=hand_qpos_end,
         hand_qvel_start=hand_qvel_start,
         hand_qvel_end=hand_qvel_end,
-        n_actuators=n_actuators,
-        ctrl_ranges=ctrl_ranges,
         palm_body_id=palm_body_id,
         fingertip_site_ids=fingertip_site_ids,
-        fingertip_geom_ids=fingertip_geom_ids,
         finger_geom_ids_per_finger=finger_geom_ids_per_finger,
-        table_geom_id=table_geom_id,
         peg_body_id=peg_body_id,
         peg_geom_id=peg_geom_id,
         peg_qpos_start=peg_qpos_start,
         peg_qvel_start=peg_qvel_start,
         hole_body_id=hole_body_id,
-        hole_wall_geom_ids=hole_wall_geom_ids,
-        hole_pos=hole_pos,
-        hole_quat=hole_quat,
         sensor_map=sensor_map,
     )

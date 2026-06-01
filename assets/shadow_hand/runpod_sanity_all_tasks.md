@@ -92,7 +92,7 @@ uv run python -c "import jax; print(jax.devices())"
 # expected: [CudaDevice(id=0)]
 
 uv run python -c "import jax; x = jax.numpy.ones((4,4)); print((x @ x).sum())"
-# expected: 16.0 (no CUDNN_STATUS_NOT_INITIALIZED)
+# expected: 64.0 (no CUDNN_STATUS_NOT_INITIALIZED)
 ```
 
 If JAX errors with `CUDNN_STATUS_NOT_INITIALIZED` despite the pin, the

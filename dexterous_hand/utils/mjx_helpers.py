@@ -63,20 +63,25 @@ def get_insertion_depth_jax(
     peg_half_length: float,
     peg_radius: float = 0.0,
 ) -> jnp.ndarray:
-    """Peg tip insertion depth along hole Z axis (0 if not inserted)."""
+    """Depth of the peg's deepest point below the hole entrance, measured along
+    the hole axis (0 if the peg is at/above the entrance).
+
+    Uses the capsule's geometric lowest point rather than ``sign(dot)`` to pick a
+    tip: the previous formula used ``jnp.sign(dot(peg_axis, hole_axis))``, which
+    is 0 for a horizontal peg (dot==0) and collapsed the tip to the peg CENTRE,
+    and for tilted pegs projected the full (half+radius) offset along the peg
+    axis instead of taking the true lowest point. The deepest point of the
+    capsule along -hole_axis sits ``peg_half_length*|cos(tilt)| + peg_radius``
+    below the centre, for either peg orientation (|dot| is sign-agnostic)."""
 
     peg_pos = xpos[peg_body_id]
     hole_pos = xpos[hole_body_id]
-    hole_rot = xmat[hole_body_id].reshape(3, 3)
-    hole_axis = hole_rot[:, 2]
+    hole_axis = xmat[hole_body_id].reshape(3, 3)[:, 2]
+    peg_axis = xmat[peg_body_id].reshape(3, 3)[:, 2]
 
-    peg_rot = xmat[peg_body_id].reshape(3, 3)
-    peg_axis = peg_rot[:, 2]
-    sign = jnp.sign(jnp.dot(peg_axis, hole_axis))
-    peg_tip = peg_pos - sign * peg_axis * (peg_half_length + peg_radius)
-
-    rel = hole_pos - peg_tip
-    depth = jnp.dot(rel, hole_axis)
+    depth_of_center = jnp.dot(hole_pos - peg_pos, hole_axis)
+    lowest_point_extent = peg_half_length * jnp.abs(jnp.dot(peg_axis, hole_axis)) + peg_radius
+    depth = depth_of_center + lowest_point_extent
     return jnp.maximum(depth, 0.0)
 
 

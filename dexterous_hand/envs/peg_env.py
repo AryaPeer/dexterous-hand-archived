@@ -130,12 +130,17 @@ class ShadowHandPegMjxEnv(MjxVecEnv):
             self._ctrl_high = jnp.array(self._mj_model.actuator_ctrlrange[:n_act, 1])
 
             self._rebuild_peg_caches()
-            # obs shape depends on model; only re-jit obs when the model rebuilds
+            # obs + step depend on the rebuilt model, so re-jit them only when the
+            # model actually changes (a clearance change). _step_single does NOT
+            # close over _p_pre_grasped, so a p-only stage transition must not pay
+            # to recompile the vmapped, frame_skip-scanned physics step (minutes
+            # of GPU stall for no behavioral change).
             self._batched_get_obs = jax.jit(jax.vmap(self._get_obs_single, in_axes=(None, 0, 0)))
+            self._batched_step = self._build_batched_step()
 
-        # re-jit every curriculum change: reset + step close over _p_pre_grasped.
+        # _reset_single closes over _p_pre_grasped (baked in as a trace-time
+        # constant), so the reset must be re-jitted on every curriculum change.
         self._batched_reset = jax.jit(jax.vmap(self._reset_single, in_axes=(None, 0, 0)))
-        self._batched_step = self._build_batched_step()
 
         if clearance_changed and self._mjx_data_batch is not None:
             self.reset()

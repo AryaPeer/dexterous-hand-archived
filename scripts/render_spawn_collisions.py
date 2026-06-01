@@ -65,11 +65,10 @@ def grasp_render(out_path: Path, n_spawns: int = 12, seed: int = 0) -> None:
         penetrating = 0
         for ci in range(data.ncon):
             c = data.contact[ci]
-            if (c.geom1 == cube_g and c.geom2 in hand_geoms) or (
+            if ((c.geom1 == cube_g and c.geom2 in hand_geoms) or (
                 c.geom2 == cube_g and c.geom1 in hand_geoms
-            ):
-                if c.dist < -1e-4:
-                    penetrating += 1
+            )) and c.dist < -1e-4:
+                penetrating += 1
         slide_x = float(qpos[0])
         slide_y = float(qpos[1])
         # freeze spawn for 15 frames
@@ -80,7 +79,7 @@ def grasp_render(out_path: Path, n_spawns: int = 12, seed: int = 0) -> None:
 
         # settle 35 frames at ctrl=settle_ctrl
         data.ctrl[: model.nu] = settle_ctrl
-        for k in range(35):
+        for _k in range(35):
             for _ in range(cfg.frame_skip):
                 mujoco.mj_step(model, data)
             renderer.update_scene(data, camera="track_cam")
@@ -155,18 +154,17 @@ def peg_render(out_path: Path, n_spawns: int = 12, seed: int = 0, p_pre_grasped:
         penetrating = 0
         for ci in range(data.ncon):
             c = data.contact[ci]
-            if (c.geom1 == peg_g and c.geom2 in hand_geoms) or (
+            if ((c.geom1 == peg_g and c.geom2 in hand_geoms) or (
                 c.geom2 == peg_g and c.geom1 in hand_geoms
-            ):
-                if c.dist < -1e-4:
-                    penetrating += 1
+            )) and c.dist < -1e-4:
+                penetrating += 1
         slide_x, slide_y = float(qpos[0]), float(qpos[1])
         renderer.update_scene(data, camera="track_cam")
         spawn_frame = renderer.render().copy()
         for _ in range(15):
             frames.append(spawn_frame)
         data.ctrl[: model.nu] = grip_ctrl if pre_grasped else open_ctrl
-        for k in range(35):
+        for _k in range(35):
             for _ in range(cfg.frame_skip):
                 mujoco.mj_step(model, data)
             renderer.update_scene(data, camera="track_cam")

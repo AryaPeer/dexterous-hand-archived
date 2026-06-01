@@ -2,13 +2,12 @@ from collections.abc import Callable, Sequence
 from dataclasses import field
 
 import flax.linen as nn
+from jax.nn.initializers import constant
 import jax.numpy as jnp
 import numpy as np
-import tensorflow_probability.substrates.jax as tfp
-from jax.nn.initializers import constant
-
 from sbx.common.jax_layers import NatureCNN
 from sbx.common.policies import Flatten
+import tensorflow_probability.substrates.jax as tfp
 
 tfd = tfp.distributions
 
@@ -45,7 +44,7 @@ class ClampedActor(nn.Module):
         super().__post_init__()
 
     @nn.compact
-    def __call__(self, x: jnp.ndarray) -> tfd.Distribution:
+    def __call__(self, x: jnp.ndarray) -> "tfd.Distribution":  # type: ignore[name-defined]
         if self.features_extractor is not None:
             x = self.features_extractor(self.features_dim, self.activation_fn)(x)
 

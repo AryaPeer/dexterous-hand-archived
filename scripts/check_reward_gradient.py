@@ -17,33 +17,25 @@ If either check FAILS, the full run will fail at scale — kill any
 planned pod spend before clicking go.
 """
 
-from dataclasses import asdict
-
 import jax.numpy as jnp
 
-from dexterous_hand.config import (
-    PegRewardConfig,
-    PegRewardWeights,
-    RewardConfig,
-    RewardWeights,
-)
+from dexterous_hand.config import PegRewardConfig, PegSceneConfig, RewardConfig
 from dexterous_hand.rewards.grasp_reward import grasp_reward, init_grasp_reward_state
 from dexterous_hand.rewards.peg_reward import init_peg_reward_state, peg_reward
 
 
-def _print_components(label: str, info: dict, weight_attr_map: dict) -> None:
-    print(f"  {label}:")
-    for k, w_attr in weight_attr_map.items():
-        weighted = float(info[f"reward/{k}"])
-        print(f"    reward/{k:<25} = {weighted:>8.4f}  (post-weight)")
-    print(f"    reward/total              = {float(info['reward/total']):>8.4f}")
-
-
 def check_peg() -> bool:
     cfg = PegRewardConfig()
-    pl = 0.06
-    table_h = 0.82
-    initial_z = 0.88
+    scene = PegSceneConfig()
+    # Production geometry. Previously hardcoded pl=0.06/table_h=0.82, which did
+    # not match the real env (peg_length=0.076, table_height=0.4) and let the
+    # pre-flight pass against a phantom scene whose align/insertion gates were
+    # active where production's are gated off.
+    pl = scene.peg_half_length * 2.0 + scene.peg_radius * 2.0  # 0.076
+    table_h = scene.table_height  # 0.4
+    hole_z = table_h + scene.hole_top_above_table  # hole entrance
+    # On-table grasp height: the grasp-and-sit operating point we must escape.
+    initial_z = table_h + scene.peg_half_length + scene.peg_radius + 0.001
 
     def run(peg_z: float) -> dict:
         state = init_peg_reward_state(initial_z)
@@ -63,7 +55,7 @@ def check_peg() -> bool:
             finger_positions=fp,
             peg_position=jnp.array([0.0, 0.0, peg_z]),
             peg_axis=jnp.array([0.0, 0.0, 1.0]),
-            hole_position=jnp.array([0.0, 0.0, table_h + 0.02]),
+            hole_position=jnp.array([0.0, 0.0, hole_z]),
             hole_axis=jnp.array([0.0, 0.0, 1.0]),
             insertion_depth=jnp.asarray(0.0),
             contact_force_magnitude=jnp.asarray(0.0),
@@ -104,12 +96,12 @@ def check_peg() -> bool:
     delta_lift_component = float(info_lift["reward/lift"]) - float(info_sit["reward/lift"])
     grasp_post_weight = float(info_sit["reward/grasp"])
 
-    print(f"  at lift_height = 0mm (perfect grip, no lift):")
+    print("  at lift_height = 0mm (perfect grip, no lift):")
     print(f"    reward/total              = {total_sit:>8.4f}")
     print(f"    reward/grasp              = {grasp_post_weight:>8.4f}  (post-weight)")
     print(f"    reward/lift               = {float(info_sit['reward/lift']):>8.4f}")
     print()
-    print(f"  at lift_height = 6mm (just past lift_step_threshold):")
+    print("  at lift_height = 6mm (just past lift_step_threshold):")
     print(f"    reward/total              = {total_lift:>8.4f}")
     print(f"    reward/lift               = {float(info_lift['reward/lift']):>8.4f}")
     print()
@@ -179,7 +171,7 @@ def check_grasp() -> bool:
     delta_total = total_lift - total_sit
     grasp_post_weight = float(info_sit["reward/grasping"])
 
-    print(f"  at lift_height = 0mm (perfect grip, no lift):")
+    print("  at lift_height = 0mm (perfect grip, no lift):")
     print(f"    reward/total              = {total_sit:>8.4f}")
     print(f"    reward/grasping           = {grasp_post_weight:>8.4f}  (post-weight)")
     print(f"    reward/lifting            = {float(info_sit['reward/lifting']):>8.4f}")

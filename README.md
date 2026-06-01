@@ -66,14 +66,6 @@ Grasp a peg, align with a hole, drive it in. Actuator set: 23 (X/Y/Z slider + 20
 
 Simulation-only. Observations include ground-truth object pose and velocities, which a real robot would not have directly. Sim-to-real would need either a pose estimator in front of the policy or an asymmetric actor-critic (full state to the value net, restricted obs to the policy).
 
-## Scope
-
-This is a simulation-only benchmark. Observations include the ground-truth
-object pose and velocities, which would not be directly available on real
-hardware. Sim-to-real transfer would need either a pose estimator in front of
-the policy or an asymmetric actor-critic setup (full state to the value
-network, restricted observations to the policy).
-
 ## Testing
 
 Run the test suite with:

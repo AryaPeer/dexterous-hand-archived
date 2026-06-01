@@ -116,7 +116,11 @@ def peg_reward(
     # contribution before PPO sees it.
     lift_gate = (n_contacts >= 2).astype(jnp.float32)
     lift_step_bonus = jnp.where(lift_height > lift_step_threshold, 1.0, 0.0) * lift_gate
-    lift_proportional = jnp.minimum(lift_height / lift_target, 1.5) * lift_gate
+    # Cap at 1.0 (was 1.5): there is no task reason to reward lifting 50% past
+    # lift_target — the peg only needs to clear the table and reach the hole
+    # entrance. The 1.5 cap kept paying out to ~75mm of lift, well past the need,
+    # feeding the "lift high and hold" attractor.
+    lift_proportional = jnp.minimum(lift_height / lift_target, 1.0) * lift_gate
     lift = lift_step_bonus + lift_proportional
 
     was_lifted_next = state.was_lifted | (lift_height >= lift_target)
@@ -235,8 +239,10 @@ def peg_reward(
         "reward/force_penalty": force_penalty,
         "reward/drop": drop,
         "reward/action_penalty": action_penalty,
-        "reward/idle_stage0_penalty": idle_penalty,
-        "reward/idle_stage1_penalty": idle_stage1_pen,
+        # raw (pre-weight) like the other reward/* components, so logged per-term
+        # curves share a common scale; total applies weights.idle_stage0/1.
+        "reward/idle_stage0_penalty": idle_raw,
+        "reward/idle_stage1_penalty": idle_stage1_raw,
         "reward/insertion_drive": insertion_drive,
         "reward/total": total,
         "metrics/stage": stage.astype(jnp.float32),

@@ -13,7 +13,6 @@ from dexterous_hand.envs.scene_builder import (
     apply_flexion_bias,
     build_scene,
     get_object_half_height,
-    TABLE_TASK_FLEXION_BIAS,
 )
 
 
@@ -114,7 +113,6 @@ def render_episode(
     rng = np.random.default_rng(seed)
     frames: list[np.ndarray] = []
 
-    cube_top_z0 = obj_z + get_object_half_height(*OBJECT_TYPES["large_cube"])
     max_lift = 0.0
     n_contact_steps = 0
 

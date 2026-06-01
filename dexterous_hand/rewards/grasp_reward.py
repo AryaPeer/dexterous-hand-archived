@@ -89,7 +89,14 @@ def grasp_reward(
     lifting = jnp.minimum(lift_height / lift_target, 1.5) * lift_gate
 
     obj_speed = jnp.linalg.norm(object_linear_velocity)
-    height_gate = _sigmoid(hold_height_k * (lift_height - lift_target + 0.04))
+    # height_gate is ~0 for a grasped-but-UNLIFTED cube and ramps to ~1 as the
+    # cube reaches lift_target. The previous formula added +0.04 inside the
+    # sigmoid, centering the gate at lift_height = -28mm, so it was ~80% active
+    # at zero lift and paid ~5.8/step (~1157 over a 200-step episode) to hold a
+    # SITTING cube — a direct grasp-and-sit subsidy the team fought for rounds.
+    # Centering at lift_target (with a sharper hold_height_k=200) makes a sitting
+    # cube earn ~0 holding while a lifted-and-held cube still earns ~full.
+    height_gate = _sigmoid(hold_height_k * (lift_height - lift_target))
     speed_gate = _sigmoid(hold_velocity_k * (hold_velocity_threshold - obj_speed))
     holding = height_gate * speed_gate * contact_scale
 
@@ -146,7 +153,9 @@ def grasp_reward(
         "reward/holding": holding,
         "reward/drop": drop,
         "reward/success": success,
-        "reward/idle_penalty": idle_penalty,
+        # raw (pre-weight) like the other reward/* components, so the logged
+        # per-term curves are on a common scale; total applies weights.idle.
+        "reward/idle_penalty": idle_raw,
         "reward/action_penalty": action_penalty,
         "reward/total": total,
         "metrics/num_finger_contacts": n_contacts,

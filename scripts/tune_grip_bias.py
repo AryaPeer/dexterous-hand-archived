@@ -7,8 +7,8 @@ that explains the tilt. No checkpoint / no GPU needed.
 """
 from __future__ import annotations
 
-import numpy as np
 import mujoco
+import numpy as np
 
 from dexterous_hand.config import PegSceneConfig
 from dexterous_hand.envs.peg_scene_builder import build_peg_scene
@@ -69,7 +69,7 @@ def _fingertip_report(model, data, nm):
     peg_c = data.xpos[nm.peg_body_id]
     names = ["ff", "mf", "rf", "lf", "th"]
     print("  fingertip offsets from peg center (dx,dy,dz | dist):")
-    for n, sid in zip(names, nm.fingertip_site_ids):
+    for n, sid in zip(names, nm.fingertip_site_ids, strict=False):
         p = data.site_xpos[sid] - peg_c
         print(f"    {n}: ({p[0]:+.3f},{p[1]:+.3f},{p[2]:+.3f}) | {np.linalg.norm(p):.3f}")
 

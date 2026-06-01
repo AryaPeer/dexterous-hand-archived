@@ -4,11 +4,9 @@ from dexterous_hand.config import (
     PegRewardConfig,
     PegRewardWeights,
     PegSceneConfig,
-    PegTrainConfig,
     RewardConfig,
     RewardWeights,
     SceneConfig,
-    TrainConfig,
 )
 
 
@@ -33,17 +31,9 @@ class TestConfigDefaults:
         c = RewardConfig()
         assert isinstance(c.weights, RewardWeights)
         assert c.lift_target == 0.012
-        assert c.hold_height_smoothness_k == 50.0
+        assert c.hold_height_smoothness_k == 200.0
         assert c.hold_velocity_smoothness_k == 20.0
         assert c.no_contact_idle_penalty == -0.08
-
-    def test_train_config(self):
-        c = TrainConfig()
-        assert c.n_envs == 256
-        assert c.seed == 42
-        assert len(c.net_arch) == 3
-        assert isinstance(c.scene_config, SceneConfig)
-        assert isinstance(c.reward_config, RewardConfig)
 
     def test_peg_scene_config(self):
         c = PegSceneConfig()
@@ -54,7 +44,7 @@ class TestConfigDefaults:
         assert c.spawn_min_radius == 0.04
         assert c.clearance == 0.004
         assert c.hole_depth == 0.06
-        assert c.hole_top_above_table == 0.06
+        assert c.hole_top_above_table == 0.08
         assert len(c.hole_offset) == 2
         assert c.peg_radius == 0.008
         assert c.peg_half_length == 0.03
@@ -72,17 +62,11 @@ class TestConfigDefaults:
         assert c.peg_hold_steps == 10
         assert c.success_threshold == 0.7
 
-    def test_peg_train_config(self):
-        c = PegTrainConfig()
-        assert c.ent_coef == "auto"
-        assert c.n_envs == 32
-        assert c.gradient_steps == 8
-        assert c.total_timesteps == 40_000_000
+    def test_mjx_peg_curriculum_stages(self):
+        c = MjxPegTrainConfig()
         assert isinstance(c.scene_config, PegSceneConfig)
         assert isinstance(c.reward_config, PegRewardConfig)
-        assert c.curriculum_reference_timesteps == 40_000_000
         assert len(c.curriculum_stages) == 5
-                                                                              
         for stage in c.curriculum_stages:
             assert len(stage) == 3
             step, clearance, p = stage
@@ -104,11 +88,11 @@ class TestConfigDefaults:
             SceneConfig,
             RewardWeights,
             RewardConfig,
-            TrainConfig,
+            MjxGraspTrainConfig,
             PegSceneConfig,
             PegRewardWeights,
             PegRewardConfig,
-            PegTrainConfig,
+            MjxPegTrainConfig,
         ]
         for cls in configs:
             obj = cls()

@@ -76,7 +76,7 @@ disallow_untyped_defs = true
 check_untyped_defs = true
 
 [[tool.mypy.overrides]]
-module = ["mujoco.*", "stable_baselines3.*", "wandb.*", "gymnasium.*", "imageio.*", "jax.*", "jaxlib.*", "flax.*", "optax.*", "chex.*", "sbx.*", "mujoco.mjx.*"]
+module = ["mujoco.*", "stable_baselines3.*", "wandb.*", "gymnasium.*", "imageio.*", "jax.*", "jaxlib.*", "flax.*", "optax.*", "chex.*", "sbx.*", "mujoco.mjx.*", "tensorflow_probability", "tensorflow_probability.*"]
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]
@@ -91,6 +91,26 @@ markers = ["slow: tests requiring MuJoCo environments"]
 
 [tool.vulture]
 paths = ["dexterous_hand", "scripts", "main.py"]
-min_confidence = 70
+# 60, not 70: vulture scores unused classes/functions/methods/attributes at 60%
+# and only reaches >=70% for unreachable code / unused imports, so min_confidence
+# 70 hid every real dead-code positive in this repo. ignore_names whitelists
+# genuine framework-contract methods (dispatched by string via env_method, or
+# overridden from the SB3 BaseCallback / VecEnv base classes) which vulture
+# cannot see are live.
+min_confidence = 60
+ignore_names = [
+    "set_curriculum_params",
+    "_on_step",
+    "_on_rollout_end",
+    "_on_training_start",
+    "step_async",
+    "step_wait",
+    "env_is_wrapped",
+    "env_method",
+    "get_attr",
+    "set_attr",
+    "seed",
+    "close",
+]
 ignore_decorators = ["@pytest.fixture", "@abstractmethod"]
 exclude = ["tests/"]

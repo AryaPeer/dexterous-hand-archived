@@ -49,15 +49,30 @@ class AssemblyCurriculumCallback(BaseCallback):
         if not self.stages:
             return
 
-        clearance = self.stages[0][1]
-        p_pre_grasped = float(self.stages[0][2])
+        # On a fresh run num_timesteps==0 -> stage 0. On a RESUME
+        # (reset_num_timesteps=False) num_timesteps is already cumulative, so
+        # jump straight to the correct stage rather than detouring through stage
+        # 0 — which, for the peg env, would rebuild the model to the EASIEST
+        # clearance and reset all envs, then fast-forward stage-by-stage with a
+        # full XLA recompile at each boundary, and run the first step at the
+        # wrong (stage-0) clearance/p_pre_grasped.
+        start_stage = 0
+        for i, stage in enumerate(self.stages):
+            if self.num_timesteps >= stage[0]:
+                start_stage = i
+        self._current_stage = start_stage
+
+        clearance = self.stages[start_stage][1]
+        p_pre_grasped = float(self.stages[start_stage][2])
         self.training_env.env_method("set_curriculum_params", clearance, p_pre_grasped)
 
         if self.verbose:
             logger.info(
-                "[Curriculum] Stage 0: clearance=%.1fmm, p_pre_grasped=%.2f at step 0",
+                "[Curriculum] Stage %d: clearance=%.1fmm, p_pre_grasped=%.2f at step %d",
+                start_stage,
                 clearance * 1000,
                 p_pre_grasped,
+                self.num_timesteps,
             )
 
     def _on_step(self) -> bool:

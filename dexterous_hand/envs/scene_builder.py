@@ -141,34 +141,28 @@ def build_grip_ctrl(
 @dataclass
 class SensorMap:
     finger_touch_adr: list[int]
-    n_sensors: int = 0
     wall_force_adr: list[int] = field(default_factory=list)
 
     @staticmethod
     def empty() -> "SensorMap":
-        return SensorMap(finger_touch_adr=[], n_sensors=0, wall_force_adr=[])
+        return SensorMap(finger_touch_adr=[], wall_force_adr=[])
 
 
 @dataclass
 class NameMap:
     hand_joint_ids: list[int]
-    hand_actuator_ids: list[int]
     hand_qpos_start: int
     hand_qpos_end: int
     hand_qvel_start: int
     hand_qvel_end: int
-    n_actuators: int
-    ctrl_ranges: np.ndarray
 
     palm_body_id: int
     fingertip_site_ids: list[int]
-    fingertip_geom_ids: set[int]
     finger_geom_ids_per_finger: list[set[int]]
     object_body_id: int
     object_geom_id: int
     obj_qpos_start: int
     obj_qvel_start: int
-    table_geom_id: int
     sensor_map: SensorMap = field(default_factory=SensorMap.empty)
 
 
@@ -352,29 +346,12 @@ def _resolve_names(model: mujoco.MjModel, spec: mujoco.MjSpec) -> NameMap:
         hand_qpos_start = hand_qpos_end = 0
         hand_qvel_start = hand_qvel_end = 0
 
-    # actuators
-    hand_actuator_ids = list(range(model.nu))
-    ctrl_ranges = model.actuator_ctrlrange[: model.nu].copy()
-    n_actuators = model.nu
-
     palm_body_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, "rh_palm")
 
     # fingertips
     fingertip_site_ids = [
         mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_SITE, name) for name in FINGERTIP_SITE_NAMES
     ]
-
-    fingertip_geom_ids: set[int] = set()
-    fingertip_body_ids = set()
-
-    for body_name in FINGERTIP_BODIES:
-        bid = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, body_name)
-        if bid >= 0:
-            fingertip_body_ids.add(bid)
-
-    for gid in range(model.ngeom):
-        if model.geom_bodyid[gid] in fingertip_body_ids:
-            fingertip_geom_ids.add(gid)
 
     finger_geom_ids_per_finger: list[set[int]] = [set() for _ in FINGER_BODY_PREFIXES]
     for gid in range(model.ngeom):
@@ -388,10 +365,9 @@ def _resolve_names(model: mujoco.MjModel, spec: mujoco.MjSpec) -> NameMap:
                 finger_geom_ids_per_finger[finger_idx].add(gid)
                 break
 
-    # object + table
+    # object
     object_body_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, "object")
     object_geom_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_GEOM, "object_geom")
-    table_geom_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_GEOM, "table_geom")
 
     # sensors
     finger_touch_adr = []
@@ -399,26 +375,21 @@ def _resolve_names(model: mujoco.MjModel, spec: mujoco.MjSpec) -> NameMap:
         sid = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_SENSOR, f"sensor_{touch_site}")
         if sid >= 0:
             finger_touch_adr.append(int(model.sensor_adr[sid]))
-    sensor_map = SensorMap(finger_touch_adr=finger_touch_adr, n_sensors=model.nsensor)
+    sensor_map = SensorMap(finger_touch_adr=finger_touch_adr)
 
     return NameMap(
         hand_joint_ids=hand_joint_ids,
-        hand_actuator_ids=hand_actuator_ids,
         hand_qpos_start=hand_qpos_start,
         hand_qpos_end=hand_qpos_end,
         hand_qvel_start=hand_qvel_start,
         hand_qvel_end=hand_qvel_end,
-        n_actuators=n_actuators,
-        ctrl_ranges=ctrl_ranges,
         palm_body_id=palm_body_id,
         fingertip_site_ids=fingertip_site_ids,
-        fingertip_geom_ids=fingertip_geom_ids,
         finger_geom_ids_per_finger=finger_geom_ids_per_finger,
         object_body_id=object_body_id,
         object_geom_id=object_geom_id,
         obj_qpos_start=obj_qpos_start,
         obj_qvel_start=obj_qvel_start,
-        table_geom_id=table_geom_id,
         sensor_map=sensor_map,
     )
 

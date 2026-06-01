@@ -182,14 +182,16 @@ class MjxVecEnv(VecEnv):
         if reward_info is not None:
             reward_info["metrics/nan_rate"] = bad.astype(jnp.float32)
 
-        # success → truncation (bootstrap from terminal obs); fall → terminated.
-        is_success_jnp = reward_info.get("is_success") if reward_info is not None else None
-        if is_success_jnp is None:
-            is_success = jnp.zeros(self._num_envs, dtype=bool)
-        else:
-            is_success = is_success_jnp.astype(bool)
-
-        truncated_only = (timed_out & ~dones) | is_success
+        # Bootstrap (TimeLimit.truncated) ONLY on timeout: the episode was cut
+        # short by the horizon but would have continued, so SB3 adds
+        # gamma*V(terminal_obs). Success and falls are true (absorbing) terminals
+        # — success already pays the full sparse bonus and the task ends, so
+        # bootstrapping gamma*V on top would inflate value targets at the goal
+        # (value overestimation near success). The env's `done` already includes
+        # is_success, so excluding it here makes success a no-bootstrap terminal.
+        # is_success still propagates to per-env infos via reward_info (logging +
+        # SB3 success-rate tracking).
+        truncated_only = timed_out & ~dones
         dones = dones | timed_out | bad
 
         needs_reset = dones
