@@ -17,7 +17,39 @@ from dexterous_hand.curriculum.callbacks import (
 )
 from dexterous_hand.envs.peg_env import ShadowHandPegMjxEnv
 from dexterous_hand.policies.clamped_actor import make_clamped_actor
-from scripts.training._common import RewardInfoLoggerCallback, setup_sb3_logger
+from scripts.training._common import (
+    MilestoneGateCallback,
+    RewardInfoLoggerCallback,
+    setup_sb3_logger,
+)
+
+# Compute-saver gates. Floors are well below the 2026-06-01 5M sanity values
+# (axis_align 0.955, insertion_depth 0.060, complete 3.24, stage 2.65,
+# insertion_hold_steps 1.83) so a healthy run sails through; tripping one means
+# a genuine regression/collapse (round-16 mode: axis_align 0.07) or a stalled
+# hold. info_key, floor, 5M-baseline, why:
+PEG_GATES = [
+    (
+        10_000_000,
+        [
+            ("metrics/axis_align", 0.70, 0.955, "peg held vertical (round-16 collapsed to 0.07)"),
+            ("metrics/stage", 1.5, 2.65, "task progressed past grasp-and-sit"),
+            ("metrics/insertion_depth", 0.040, 0.060, "peg reaching toward the hole (~0.53 frac)"),
+        ],
+        "peg 10M: vertical grip + reaching insertion",
+    ),
+    (
+        30_000_000,
+        [
+            ("metrics/axis_align", 0.80, 0.955, "vertical grip held"),
+            ("metrics/insertion_depth", 0.050, 0.060, "depth >= ~0.66 of peg length"),
+            ("reward/complete", 1.0, 3.24, "insertion completions still firing"),
+            ("metrics/insertion_hold_steps", 2.5, 1.83,
+             "sustained hold climbing toward the 10-step success (flat ~1.8 = stalled)"),
+        ],
+        "peg 30M: insertion solidifying",
+    ),
+]
 
 
 def train(config: MjxPegTrainConfig) -> None:
@@ -114,6 +146,8 @@ def train(config: MjxPegTrainConfig) -> None:
             verbose=1,
         ),
     ]
+    if config.gate_enabled:
+        callbacks.insert(1, MilestoneGateCallback(PEG_GATES, verbose=1))
 
     model.learn(
         total_timesteps=config.total_timesteps,
@@ -137,11 +171,17 @@ def parse_args() -> MjxPegTrainConfig:
     parser.add_argument("--batch-size", type=int, default=4096)
     parser.add_argument("--n-steps-per-env", type=int, default=128)
     parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument(
+        "--no-gate",
+        action="store_true",
+        help="Disable the 10M/30M milestone compute-saver gate (let the run go to the end).",
+    )
     args = parser.parse_args()
 
     return MjxPegTrainConfig(
         num_envs=args.num_envs,
         total_timesteps=args.total_timesteps,
+        gate_enabled=not args.no_gate,
         learning_rate=args.learning_rate,
         batch_size=args.batch_size,
         n_steps_per_env=args.n_steps_per_env,

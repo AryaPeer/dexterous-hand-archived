@@ -164,6 +164,12 @@ class PegSceneConfig:
 class MjxGraspTrainConfig:
     num_envs: int = 768
     total_timesteps: int = 70_000_000
+    # Milestone compute-saver. When True the run stops early if the task
+    # metrics regress/collapse or a progress metric goes flat at a milestone
+    # (10M grip-health, 50M lift-emergence for grasp) — see the gate list in
+    # scripts/training/train_grasp.py and MilestoneGateCallback in _common.py.
+    # A ~500k checkpoint always exists, so a stop is resumable. CLI: --no-gate.
+    gate_enabled: bool = True
     learning_rate: float = 3e-4
     batch_size: int = 4096
     n_steps_per_env: int = 128
@@ -209,6 +215,13 @@ def _mjx_peg_reward_config() -> PegRewardConfig:
 class MjxPegTrainConfig:
     num_envs: int = 768
     total_timesteps: int = 150_000_000
+    # Milestone compute-saver. When True the run stops early if the task
+    # metrics regress/collapse or a progress metric goes flat at a milestone
+    # (10M and 30M for peg) — see the gate list in scripts/training/train_peg.py
+    # and MilestoneGateCallback in _common.py. Bars are derived from the
+    # 2026-06-01 5M sanity, NOT the older doc bars. A ~500k checkpoint always
+    # exists, so a stop is resumable. CLI: --no-gate.
+    gate_enabled: bool = True
     learning_rate: float = 3e-4
     batch_size: int = 4096
     n_steps_per_env: int = 128

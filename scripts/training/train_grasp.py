@@ -13,7 +13,36 @@ from wandb.integration.sb3 import WandbCallback
 from dexterous_hand.config import MjxGraspTrainConfig
 from dexterous_hand.envs.grasp_env import ShadowHandGraspMjxEnv
 from dexterous_hand.policies.clamped_actor import make_clamped_actor
-from scripts.training._common import RewardInfoLoggerCallback, setup_sb3_logger
+from scripts.training._common import (
+    MilestoneGateCallback,
+    RewardInfoLoggerCallback,
+    setup_sb3_logger,
+)
+
+# Compute-saver gates. Grasp lifts via finger-curl only after ~40M (flat
+# object_height at 5M is EXPECTED), so the early gate checks grip-health only
+# and the lift check is deferred to 50M. 5M sanity baselines: nfc 4.9,
+# grasping 0.985, grasp_quality 1.0, object_height 0.4349 (at rest, unlifted).
+# info_key, floor, 5M-baseline, why:
+GRASP_GATES = [
+    (
+        10_000_000,
+        [
+            ("metrics/num_finger_contacts", 3.0, 4.92, "grip stays formed"),
+            ("reward/grasping", 0.70, 0.985, "grasp reward maintained"),
+            ("reward/grasp_quality", 0.70, 1.0, "grip quality maintained"),
+        ],
+        "grasp 10M: grip health (lift not expected yet)",
+    ),
+    (
+        50_000_000,
+        [
+            ("metrics/object_height", 0.437, 0.4349,
+             "lift has emerged (>~2mm; ~11mm expected by 40M); flat 0.4349 = never lifts"),
+        ],
+        "grasp 50M: lift emergence",
+    ),
+]
 
 
 def train(config: MjxGraspTrainConfig) -> None:
@@ -96,6 +125,8 @@ def train(config: MjxGraspTrainConfig) -> None:
             verbose=1,
         ),
     ]
+    if config.gate_enabled:
+        callbacks.insert(0, MilestoneGateCallback(GRASP_GATES, verbose=1))
 
     model.learn(
         total_timesteps=config.total_timesteps,
@@ -119,11 +150,17 @@ def parse_args() -> MjxGraspTrainConfig:
     parser.add_argument("--batch-size", type=int, default=4096)
     parser.add_argument("--n-steps-per-env", type=int, default=128)
     parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument(
+        "--no-gate",
+        action="store_true",
+        help="Disable the 10M/50M milestone compute-saver gate (let the run go to the end).",
+    )
     args = parser.parse_args()
 
     return MjxGraspTrainConfig(
         num_envs=args.num_envs,
         total_timesteps=args.total_timesteps,
+        gate_enabled=not args.no_gate,
         learning_rate=args.learning_rate,
         batch_size=args.batch_size,
         n_steps_per_env=args.n_steps_per_env,

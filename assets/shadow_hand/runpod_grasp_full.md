@@ -3,8 +3,12 @@
 Single 5090 pod, ~62 hr, ~$61 at measured 316 fps for PPO+MJX at 768
 envs. Round-13 grasp 50M had `success_hold_steps` plateau at 5.6 due to
 adaptive LR collapse; round-14 raises `target_kl` to 0.05 to let LR stay
-near 3e-4. The 10M kill gate catches the same failure mode for ~$8 if
-it recurs.
+near 3e-4. The gates are now **automatic** (disable with `--no-gate`):
+a 10M grip-health gate and a 50M lift-emergence gate stop the run if it
+regresses. Lift via finger-curl only emerges around ~40M (flat
+`object_height` at 5M is EXPECTED), so — unlike the old manual gate — the
+10M check does NOT require any lift or success-hold; that is deferred to
+the 50M gate.
 
 ## 1. Pod
 
@@ -83,47 +87,67 @@ Detach with `Ctrl+b d`. Reattach with `tmux attach -t grasp`.
 2. Drop `--num-envs` to 512.
 3. Restart on a bigger GPU if still OOM at 512 envs.
 
-## 4. 10M gate (run when total_timesteps ~= 10M, ~9 hr in, ~$8 sunk)
+## 4. Automatic gates (10M grip-health, 50M lift-emergence)
+
+The run gates itself — you don't run anything. `MilestoneGateCallback`
+prints a `===== MILESTONE GATE =====` table and **exits cleanly** if a
+floor is breached. Floors (source of truth:
+`scripts/training/train_grasp.py::GRASP_GATES`):
+
+10M — grip health (lift NOT expected yet):
+- `metrics/num_finger_contacts >= 3.0`  (5M 4.92)
+- `reward/grasping >= 0.70`             (5M 0.985)
+- `reward/grasp_quality >= 0.70`        (5M 1.0)
+
+50M — lift emergence:
+- `metrics/object_height >= 0.437`  (5M 0.4349 at rest; ~11mm lift expected
+  by 40M — a flat 0.4349 means the policy never lifts)
+
+The old manual 10M bar `success_hold_steps >= 3.0` was WRONG: grasp has no
+success hold until it lifts (~40M), so it would have false-killed every
+healthy run. `learning_rate`/`value_loss` aren't in the env infos, so they
+are not auto-gated — watch them with the snippet in §4b.
+
+On a gate stop the process saves and exits — preserve and stop the pod:
 
 ```
-nvidia-smi
+cp -rf ~/dexterous_hand/runs/. /workspace/runs/
+runpodctl stop pod "$RUNPOD_POD_ID"
+```
+
+A ~500k checkpoint exists under `runs/grasp_mjx_768env_42/checkpoints/`;
+resume per §8 if you judge a stop premature.
+
+Expected throughput on a saturated 5090 is ~316 fps (PPO+MJX is
+GPU-bound, not env-bound — bumping `--num-envs` won't help once util is
+99%).
+
+## 4b. Optional: inspect progress yourself any time
+
+```
 cd ~/dexterous_hand
 python3 << 'EOF'
 import csv
 with open("runs/grasp_mjx_768env_42/logs/progress.csv") as f:
     rows = list(csv.DictReader(f))
 last = rows[-1]
-print(f"timesteps:          {last['time/total_timesteps']}")
-print(f"learning_rate:      {last['train/learning_rate']:>10}  (bar >= 1e-4)")
-print(f"object_height:      {last['train/metrics/object_height']:>10}")
-print(f"success_hold_steps: {last['train/metrics/success_hold_steps']:>10}  (bar >= 3.0)")
-print(f"value_loss:         {last['train/value_loss']:>10}  (bar < 100)")
-print(f"ep_rew_mean:        {last['rollout/ep_rew_mean']:>10}")
-print(f"std:                {last['train/std']:>10}")
+for k in ["time/total_timesteps", "train/metrics/num_finger_contacts",
+          "train/reward/grasping", "train/reward/grasp_quality",
+          "train/metrics/object_height", "train/metrics/success_hold_steps",
+          "train/learning_rate", "train/value_loss", "rollout/ep_rew_mean",
+          "train/std"]:
+    print(f"{k:38s} {last.get(k, 'n/a')}")
 EOF
 ```
 
-Hard kill criteria — any one fails -> kill:
-- `learning_rate < 1e-4` (adaptive LR collapsing again; raise target_kl)
-- `success_hold_steps < 3.0` (not on track for >= 10 by 70M)
-- `value_loss > 100` (norm_reward isn't taking; investigate)
-
-Kill cleanly:
-
-```
-tmux send-keys -t grasp C-c
-sleep 5
-cp -rf ~/dexterous_hand/runs/. /workspace/runs/
-runpodctl stop pod "$RUNPOD_POD_ID"
-```
-
-Expected throughput on a saturated 5090 is ~316 fps (PPO+MJX is
-GPU-bound, not env-bound — bumping `--num-envs` won't help once util is
-99%).
+Watch `learning_rate >= 1e-4` (adaptive-LR collapse = the round-13 failure)
+and `value_loss < 100`. Neither is auto-gated.
 
 ## 5. Watcher in a second tmux (auto-copy + stop pod when done)
 
-Only run this after the 10M gate passes.
+Start this right after launching the run — it copies results and stops
+the pod whenever training exits, **whether at an auto-gate stop or after
+the full 70M**. So you can leave the run unattended either way.
 
 ```
 tmux new-session -s watcher

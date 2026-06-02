@@ -1,8 +1,14 @@
 # RunPod peg full (150M)
 
 Single 5090 pod, ~120 hr, ~$120 at measured 316 fps for PPO+MJX at 768
-envs. The 10M and 30M kill gates exist so a stuck policy costs ~$8 or
-~$24 instead of $120 — use them.
+envs. The 10M and 30M gates are now **automatic** — the training process
+prints a diagnostic and stops itself if the task metrics regress or stall,
+so a stuck policy costs ~$8 or ~$24 instead of $120. No manual kill needed
+(disable with `--no-gate` if you want to override). Bars are derived from
+the 2026-06-01 5M sanity (axis_align 0.955, insertion_depth 0.060,
+complete 3.24, stage 2.65, insertion_hold_steps 1.83), NOT the older
+round-13/14 bars — the lift reward was capped (weight 10, cap 1.0) so
+`reward/lift` is now ~0.07 and is deliberately NOT gated.
 
 ## 1. Pod
 
@@ -75,13 +81,54 @@ uv run python main.py train-peg-mjx \
 
 Detach with `Ctrl+b d`. Reattach with `tmux attach -t peg`.
 
+The run **auto-gates at 10M and 30M** (see §4/§5): it prints a
+`===== MILESTONE GATE =====` block and exits cleanly if metrics regress.
+Add `--no-gate` to the command above to disable and force a full 150M run.
+
 ## 3b. Troubleshooting: `RESOURCE_EXHAUSTED: CUDA_ERROR_OUT_OF_MEMORY` at env.reset()
 
 1. `nvidia-smi` in a new shell. Kill anything holding VRAM.
 2. Drop `--num-envs` to 512.
 3. Restart on a bigger GPU if still OOM at 512 envs.
 
-## 4. 10M gate (run when total_timesteps ~= 10M, ~9 hr in, ~$8 sunk)
+## 4. Automatic gates (10M and 30M)
+
+The run gates itself — you don't run anything. At ~10M (~9 hr, ~$8) and
+~30M (~26 hr, ~$26) `MilestoneGateCallback` prints a
+`===== MILESTONE GATE =====` table of the recent-mean task metrics vs
+floors and **exits the process cleanly** if any metric is below floor.
+Floors (source of truth: `scripts/training/train_peg.py::PEG_GATES`):
+
+10M — vertical grip + reaching insertion:
+- `metrics/axis_align >= 0.70`         (5M 0.955; round-16 collapsed to 0.07)
+- `metrics/stage >= 1.5`              (5M 2.65; past grasp-and-sit)
+- `metrics/insertion_depth >= 0.040`  (5M 0.060; ~0.53 of peg length)
+
+30M — insertion solidifying:
+- `metrics/axis_align >= 0.80`            (5M 0.955)
+- `metrics/insertion_depth >= 0.050`      (5M 0.060; ~0.66 frac)
+- `reward/complete >= 1.0`                (5M 3.24; completions firing)
+- `metrics/insertion_hold_steps >= 2.5`   (5M 1.83; the sustained hold must
+  climb toward the 10-step success — a flat ~1.8 = stalled)
+
+`reward/lift` is intentionally NOT gated: the lift weight was capped
+(weight 10, cap 1.0), so it sits at ~0.07 and the old `>= 1.0` bar would
+false-fail. On a gate stop the process saves and exits — preserve and
+stop the pod:
+
+```
+# training already exited; just preserve + shut down
+cp -rf ~/dexterous_hand/runs/. /workspace/runs/
+runpodctl stop pod "$RUNPOD_POD_ID"
+```
+
+A ~500k checkpoint always exists under `runs/peg_mjx_768env_42/checkpoints/`.
+If you judge a stop premature (e.g. a sigmoidal learner still climbing),
+resume per §9 from the latest checkpoint rather than restarting.
+
+## 5. Optional: inspect progress yourself any time
+
+The gate is automatic, but to peek mid-run:
 
 ```
 cd ~/dexterous_hand
@@ -90,43 +137,23 @@ import csv
 with open("runs/peg_mjx_768env_42/logs/progress.csv") as f:
     rows = list(csv.DictReader(f))
 last = rows[-1]
-print(f"timesteps:       {last['time/total_timesteps']}")
-print(f"stage:           {last['train/metrics/stage']:>10}  (bar >= 2.0)")
-print(f"peg_height:      {last['train/metrics/peg_height']:>10}  (bar >= 0.45)")
-print(f"reward/lift:     {last['train/reward/lift']:>10}  (bar >= 1.0; step bonus firing)")
-print(f"value_loss:      {last['train/value_loss']:>10}  (bar < 100)")
-print(f"ep_rew_mean:     {last['rollout/ep_rew_mean']:>10}")
+for k in ["time/total_timesteps", "train/metrics/axis_align",
+          "train/metrics/insertion_depth", "train/metrics/insertion_hold_steps",
+          "train/metrics/stage", "train/reward/complete",
+          "train/metrics/num_finger_contacts", "train/value_loss",
+          "rollout/ep_rew_mean"]:
+    print(f"{k:38s} {last.get(k, 'n/a')}")
 EOF
 ```
 
-Hard kill criteria — any one fails -> kill:
-- `peg_height < 0.45` (no lift past +27mm)
-- `stage < 2.0`
-- `reward/lift < 1.0` (step bonus not firing reliably)
-- `value_loss > 100` (norm_reward isn't taking; investigate before continuing)
-
-Kill cleanly:
-
-```
-tmux send-keys -t peg C-c
-sleep 5
-cp -rf ~/dexterous_hand/runs/. /workspace/runs/
-runpodctl stop pod "$RUNPOD_POD_ID"
-```
-
-## 5. 30M gate (run when total_timesteps ~= 30M, ~26 hr in, ~$26 sunk)
-
-Same script, stricter bars:
-- `stage >= 2.5` sustained
-- `insertion_depth >= 5e-4` trending up
-- `ep_rew_mean` strictly higher than at 10M (not flat)
-
-Pass all -> continue to 150M and start watcher in section 6. Fail any ->
-kill per the section 4 commands.
+`value_loss` should stay < 100 (norm_reward working); it is NOT
+auto-gated, so watch it here — a climb past ~100 means investigate.
 
 ## 6. Watcher in a second tmux (auto-copy + stop pod when done)
 
-Only run this after both 10M and 30M gates pass.
+Start this right after launching the run — it copies results and stops
+the pod whenever training exits, **whether at an auto-gate stop or after
+the full 150M**. So you can leave the run unattended either way.
 
 ```
 tmux new-session -s watcher
@@ -147,7 +174,8 @@ while pgrep -f "main.py train-peg-mjx" > /dev/null; do sleep 60; done \
 | `train/std`                           | stays in [0.05, 1.1], never >1.5 |
 | `train/metrics/nan_rate`              | < 0.01                           |
 | `train/metrics/stage`                 | reaches 4.0 sustained            |
-| `train/metrics/insertion_depth`       | > 0.01 sustained                 |
+| `train/metrics/insertion_depth`       | > 0.05 (~0.66 frac) sustained    |
+| `train/metrics/insertion_hold_steps`  | > 10 (sustained 10-step hold)    |
 | `train/value_loss`                    | < 100, flat or declining         |
 | `eval/success_rate`                   | > 0.10                           |
 
