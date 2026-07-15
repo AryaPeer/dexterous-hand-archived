@@ -53,6 +53,7 @@ def _measure_depth(cfg: PegSceneConfig, model, data, nm) -> float:
             cfg.peg_half_length,
             cfg.peg_radius,
             cfg.peg_radius + cfg.clearance,
+            cfg.hole_depth,
         )
     )
 
@@ -114,6 +115,23 @@ def test_insertion_depth_requires_lateral_containment():
         ("upright in table corner", [0.20, 0.10, spawn_z], upright),
         ("lying flat 10cm out", [0.10, 0.0, cfg.table_height + cfg.peg_radius + 0.001], lying),
     ]
+    # Round-17 exploit poses: a table-lying peg with one END slid into the
+    # slot under the floating tube. The lower end sits ON the hole axis, so
+    # the lateral gate passes; only the AXIAL window (lower-end depth 0.072 >
+    # hole_depth 0.06) zeroes it. Kinematic pose — the pedestal now blocks it
+    # physically, but the metric must be honest on its own (pre-axial-window
+    # these measured depth 0.080, fraction 1.0, with zero wall contact).
+    for deg in (3.0, 8.0):
+        theta = np.deg2rad(90.0 - deg)
+        axis = np.array([np.sin(theta), 0.0, np.cos(theta)])
+        center = (
+            np.array([0.0, 0.0, cfg.table_height + cfg.peg_radius])
+            + axis * cfg.peg_half_length
+        )
+        quat_about_y = [np.cos(theta / 2.0), 0.0, np.sin(theta / 2.0), 0.0]
+        outside_poses.append(
+            (f"under-tube, {deg:.0f}deg tilt, end below bore", center.tolist(), quat_about_y)
+        )
     for label, pos, quat in outside_poses:
         _set_peg_pose(model, data, pos, quat)
         mujoco.mj_forward(model, data)
@@ -139,6 +157,43 @@ def test_insertion_depth_requires_lateral_containment():
         f"{required:.4f} — either the containment gate wrongly zeroes real "
         f"insertions or the tube is too shallow for success_threshold"
     )
+
+
+def test_under_tube_slot_is_blocked():
+    """Round-17: the tube floats (entrance 8cm up, walls only 6cm deep), so a
+    pedestal geom must fill table-top -> plate-underside; otherwise a lying peg
+    (1.6cm dia) fits in the ~1.75cm slot and gets lost under the receptacle.
+    Read the bounds from the compiled model so builder changes can't silently
+    reopen the gap."""
+    cfg = PegSceneConfig()
+    model, _, _ = build_peg_scene(cfg)
+
+    ped_gid = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_GEOM, "hole_pedestal")
+    assert ped_gid >= 0, "hole_pedestal geom missing — the under-tube slot is open"
+
+    body = model.geom_bodyid[ped_gid]
+    body_z = float(model.body_pos[body][2])
+    ped_top = body_z + float(model.geom_pos[ped_gid][2]) + float(model.geom_size[ped_gid][2])
+    ped_bottom = body_z + float(model.geom_pos[ped_gid][2]) - float(model.geom_size[ped_gid][2])
+
+    plate_gid = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_GEOM, "hole_bottom")
+    plate_bottom = (
+        body_z + float(model.geom_pos[plate_gid][2]) - float(model.geom_size[plate_gid][2])
+    )
+
+    assert ped_top >= plate_bottom - 1e-9, (
+        f"pedestal top {ped_top:.4f} leaves a gap below the plate underside "
+        f"{plate_bottom:.4f}"
+    )
+    assert ped_bottom <= cfg.table_height + 1e-9, (
+        f"pedestal bottom {ped_bottom:.4f} floats above the table top "
+        f"{cfg.table_height:.4f}"
+    )
+    # footprint must cover the walls' footprint so nothing can slide under them
+    wall_gid = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_GEOM, "hole_wall_px")
+    wall_outer_x = float(model.geom_pos[wall_gid][0]) + float(model.geom_size[wall_gid][0])
+    assert float(model.geom_size[ped_gid][0]) >= wall_outer_x - 1e-9
+    assert float(model.geom_size[ped_gid][1]) >= wall_outer_x - 1e-9
 
 
 @pytest.mark.slow

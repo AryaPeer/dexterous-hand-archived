@@ -301,6 +301,28 @@ def build_peg_scene(
         **wall_kwargs,
     )
 
+    # Pedestal: fill the air gap between the table top and the tube's
+    # underside. With hole_top_above_table (0.08) > hole_depth + plate (0.0625)
+    # the tube floats, leaving a ~1.75cm slot that admits the 1.6cm-diameter
+    # peg — the round-17 under-tube exploit measured insertion fraction 1.0
+    # for a table-lying peg with one end poked under the bore. The metric now
+    # also has an axial window (get_insertion_depth_jax), so this is physical
+    # hygiene: pegs can no longer get lost under the receptacle at all. No
+    # touch sensor (the wall-force sensor list feeds the obs and must keep its
+    # length); wall collision bits, so it blocks the peg but not the hand.
+    pedestal_top = -config.hole_depth - wt / 2
+    pedestal_bottom = -config.hole_top_above_table
+    if pedestal_top > pedestal_bottom:
+        ph = (pedestal_top - pedestal_bottom) / 2
+        hole_body.add_geom(
+            name="hole_pedestal",
+            type=mujoco.mjtGeom.mjGEOM_BOX,
+            size=[cr + wt, cr + wt, ph],
+            pos=[0.0, 0.0, pedestal_bottom + ph],
+            rgba=wall_rgba,
+            **wall_kwargs,
+        )
+
     # Peg<->bore friction override. MuJoCo combines pair friction as the
     # element-wise MAX of the two geoms, and both peg and walls default to
     # sliding mu=1.0 — at mu=1 a released 0.02kg peg two-point-wedges in the

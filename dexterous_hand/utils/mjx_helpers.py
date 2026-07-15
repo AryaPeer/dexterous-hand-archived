@@ -63,19 +63,30 @@ def get_insertion_depth_jax(
     peg_half_length: float,
     peg_radius: float,
     bore_radius: float,
+    hole_depth: float,
 ) -> jnp.ndarray:
     """Depth of the peg's deepest point below the hole entrance, measured along
-    the hole axis — counted ONLY while the peg is laterally inside the bore
-    (0 if the peg is at/above the entrance or outside the bore).
+    the hole axis — counted ONLY while the peg is inside the bore SEGMENT:
+    laterally within ``bore_radius`` of the hole axis AND axially no deeper
+    than ``hole_depth`` below the entrance (0 otherwise).
 
     Depth-below-the-entrance-PLANE alone is NOT insertion: the entrance sits
     ``hole_top_above_table`` (8cm) above the table, so without containment any
     peg at table level anywhere measures "deeper" than a fully inserted one
     (table-sitting scored fraction 1.0 vs 0.757 truly bottomed-out), which made
-    drop-the-peg a free terminal success. The gate zeroes depth unless the
-    capsule's lower-end axis point lies within ``bore_radius``
-    (= peg_radius + clearance) of the hole axis; with rigid walls that is
-    physically equivalent to "actually in the tube".
+    drop-the-peg a free terminal success. The lateral gate zeroes depth unless
+    the capsule's lower-end axis point lies within ``bore_radius``
+    (= peg_radius + clearance) of the hole axis.
+
+    The lateral gate alone is a cylinder test of INFINITE extent — it admitted
+    the round-17 under-tube exploit: with the tube floating above the table
+    (walls span only ``hole_depth`` below the entrance), a table-lying peg with
+    one end poked into the slot under the bore sat within the lateral bound at
+    lower-end depth 0.072 and measured fraction 1.0 with zero wall contact.
+    The axial window closes it: a genuinely in-tube lower end is at most
+    ``hole_depth − plate/2 − peg_radius`` (0.0495) below the entrance, so
+    ``<= hole_depth`` (0.06) passes every physical insertion with margin while
+    anything below the tube (>= 0.0625, the plate underside) is zeroed.
 
     Uses the capsule's geometric lowest point rather than ``sign(dot)`` to pick a
     tip: ``sign`` is 0 for a horizontal peg (collapsing the tip to the centre)
@@ -93,13 +104,17 @@ def get_insertion_depth_jax(
     lowest_point_extent = peg_half_length * jnp.abs(axis_dot) + peg_radius
     depth = jnp.maximum(depth_of_center + lowest_point_extent, 0.0)
 
-    # Lateral containment: the capsule endpoint nearer the hole bottom must sit
-    # within the bore. sign(0)=0 degrades to the centre for a horizontal peg,
+    # Containment: the capsule endpoint nearer the hole bottom must sit within
+    # the bore segment — laterally within bore_radius AND axially above the
+    # bore's bottom. sign(0)=0 degrades to the centre for a horizontal peg,
     # which is the right representative point there.
     lower_end = peg_pos - peg_axis * peg_half_length * jnp.sign(axis_dot)
     rel = lower_end - hole_pos
+    lower_end_depth = jnp.dot(-rel, hole_axis)
     lateral = rel - jnp.dot(rel, hole_axis) * hole_axis
-    contained = jnp.linalg.norm(lateral) <= bore_radius
+    contained = (jnp.linalg.norm(lateral) <= bore_radius) & (
+        lower_end_depth <= hole_depth
+    )
     return jnp.where(contained, depth, 0.0)
 
 

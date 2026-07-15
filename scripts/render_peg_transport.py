@@ -115,6 +115,7 @@ def main() -> None:
             nm.peg_body_id, nm.hole_body_id,
             cfg.peg_half_length, cfg.peg_radius,
             cfg.peg_radius + cfg.clearance,
+            cfg.hole_depth,
         )
     )
     frac = depth / peg_len

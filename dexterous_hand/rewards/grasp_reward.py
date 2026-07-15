@@ -146,7 +146,15 @@ def grasp_reward(
         initial_height_above_table=state.initial_height_above_table,
         idle_steps=new_idle_steps,
         success_hold_counter=new_success_hold,
-        was_success_prev=is_success,
+        # Sticky ONCE-PER-EPISODE latch. The previous edge detector
+        # (was_success_prev=is_success) re-armed the +250 after any drop, so
+        # lift/hold-1s/drop cycling out-earned steady holding by ~24% (the
+        # -20 drop penalty is 12x smaller than the re-armed bonus) — the
+        # reward-optimal policy dropped the cube every second. Published
+        # bonuses are once/capped (ManiSkill, robosuite); OpenAI's re-fires
+        # only because the goal CHANGES. Latched, a yo-yo cycle pays ~11/step
+        # vs ~13.8/step steady, so holding wins.
+        was_success_prev=state.was_success_prev | is_success,
     )
 
     info = {

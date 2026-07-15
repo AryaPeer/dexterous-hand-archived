@@ -113,11 +113,48 @@ class TestGraspJax:
         _, new_state, _ = grasp_reward(state=state, **kw)
         assert bool(new_state.was_lifted)
 
-        kw["object_position"] = jnp.array([0.0, 0.0, 0.405])           
+        kw["object_position"] = jnp.array([0.0, 0.0, 0.405])
         kw["finger_contact_mask"] = jnp.array([False] * 5)
         _, final_state, info = grasp_reward(state=new_state, **kw)
-                                                                      
+
         assert float(info["reward/drop"]) < 0.0
+
+    def test_success_bonus_fires_once_per_episode(self):
+        """Round-17 regression: the +250 success bonus must NOT re-arm after a
+        drop. The previous edge detector (was_success_prev=is_success) re-fired
+        it on every re-hold, so lift/hold-1s/drop cycling out-earned steady
+        holding by ~24% — the reward-optimal policy dropped the cube every
+        second."""
+        cfg = RewardConfig()
+        held = _grasp_kwargs(cfg, 0.4)
+        # 3 contacts (default mask), at rest, lift_factor 1.0 -> at_target
+        held["object_position"] = jnp.array([0.0, 0.0, 0.55])
+        dropped = _grasp_kwargs(cfg, 0.4)
+        dropped["object_position"] = jnp.array([0.0, 0.0, 0.436])
+        dropped["finger_contact_mask"] = jnp.array([False] * 5)
+
+        state = init_grasp_reward_state(0.436, 0.4)
+        bonuses = []
+        for _ in range(cfg.success_hold_steps + 2):
+            _, state, info = grasp_reward(state=state, **held)
+            bonuses.append(float(info["reward/success"]))
+        assert sum(b > 0.0 for b in bonuses) == 1, "bonus must fire exactly once"
+
+        for _ in range(3):
+            _, state, info = grasp_reward(state=state, **dropped)
+            assert float(info["reward/success"]) == 0.0
+
+        rehold_bonuses = []
+        for _ in range(cfg.success_hold_steps + 5):
+            _, state, info = grasp_reward(state=state, **held)
+            rehold_bonuses.append(float(info["reward/success"]))
+        assert all(b == 0.0 for b in rehold_bonuses), (
+            "success bonus re-armed after a drop — yo-yo farming is back"
+        )
+        # the is_success FLAG must still report the re-achieved hold (logging
+        # and the success-rate metric are unaffected by the payment latch)
+        assert float(info["is_success"]) == 1.0
+
 
 class TestPegJax:
     def _kw(self) -> dict:

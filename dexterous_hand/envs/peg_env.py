@@ -211,7 +211,27 @@ class ShadowHandPegMjxEnv(MjxVecEnv):
 
         mjx_data, _ = jax.lax.scan(_settle, mjx_data, None, length=5)
 
-        initial_peg_height = mjx_data.xpos[nm.peg_body_id][2]
+        # Round-17: reference lift from the TABLE spawn height even when the
+        # episode spawns pre-grasped in-hand (~0.52). Referencing the in-hand
+        # spawn made `lift` pay 0 at the engaged pose (peg centre 0.503), so
+        # in 100% of early-curriculum episodes the per-step chain INVERTED
+        # (held-high 25.5 > hover-over-bore 23.5 > engaged 18.7) and pushed
+        # the policy AWAY from the endgame — the opposite of the monotone
+        # table-spawn chain check_reward_gradient.py proves (26.5 < 30.9 <
+        # 38.7). Clamping the reference saturates lift's 1.0 cap everywhere
+        # >= lift_target above the table, so descending into engagement never
+        # loses lift reward. Intended side effects for pre-grasped spawns:
+        # was_lifted arms immediately (fumbling the spawn grip now costs the
+        # drop penalty) and the stage machine starts at 2 (the peg IS lifted).
+        table_spawn_height = (
+            self.scene_config.table_height
+            + self.scene_config.peg_half_length
+            + self.scene_config.peg_radius
+            + 0.001
+        )
+        initial_peg_height = jnp.minimum(
+            mjx_data.xpos[nm.peg_body_id][2], table_spawn_height
+        )
 
         n_act = self._action_size()
         env_state = PegEnvState(
@@ -278,6 +298,7 @@ class ShadowHandPegMjxEnv(MjxVecEnv):
             peg_half_length,
             peg_radius,
             self._bore_radius,
+            self.scene_config.hole_depth,
         )
 
         # per-wall contact force magnitudes (sum over all hole walls)
@@ -413,6 +434,7 @@ class ShadowHandPegMjxEnv(MjxVecEnv):
             self.scene_config.peg_half_length,
             self.scene_config.peg_radius,
             self._bore_radius,
+            self.scene_config.hole_depth,
         )
 
         # per-wall + total contact forces, exposed to the policy

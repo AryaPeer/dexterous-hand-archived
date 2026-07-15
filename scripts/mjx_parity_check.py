@@ -289,6 +289,7 @@ def run_peg(engine_cls) -> dict[str, float]:
                 nm.peg_body_id, nm.hole_body_id,
                 cfg.peg_half_length, cfg.peg_radius,
                 cfg.peg_radius + cfg.clearance,
+                cfg.hole_depth,
             )
         )
 
