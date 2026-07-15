@@ -100,6 +100,9 @@ def train(config: MjxPegTrainConfig) -> None:
             norm_obs=config.norm_obs,
             norm_reward=config.norm_reward,
             clip_obs=10.0,
+            # return-normalization discount; SB3's default (0.99) silently
+            # mismatches the PPO gamma this config trains with
+            gamma=config.gamma,
         )
 
     curriculum_callback = AssemblyCurriculumCallback(

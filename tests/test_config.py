@@ -18,6 +18,8 @@ class TestConfigDefaults:
         assert c.mount_height == 0.78
         assert c.sim_timestep == 0.002
         assert c.frame_skip == 20
+        assert c.solver_iterations == 8
+        assert c.ls_iterations == 8
 
     def test_reward_weights(self):
         w = RewardWeights()
@@ -52,6 +54,8 @@ class TestConfigDefaults:
         assert c.peg_radius == 0.008
         assert c.peg_half_length == 0.03
         assert c.peg_mass == 0.02
+        assert c.solver_iterations == 8
+        assert c.ls_iterations == 8
 
     def test_peg_reward_config(self):
         c = PegRewardConfig()
@@ -60,7 +64,6 @@ class TestConfigDefaults:
         assert c.idle_stage0_penalty == -0.3
         assert c.weights.opposition == 1.0
         assert c.weights.axis_in_grip == 1.0
-        assert c.weights.insertion_drive == 3.0
         # place: keypoint shaping to the ENGAGED release pose (2026-07-14) —
         # the only x/y gradient between lift saturation and in-bore depth.
         assert c.weights.place == 8.0
@@ -117,7 +120,11 @@ class TestConfigDefaults:
         assert not hasattr(c, "hold_bonus"), "RewardConfig.hold_bonus should be removed"
 
         pw = PegRewardWeights()
-        for name in ("upward", "action_magnitude"):
+        # insertion_drive: removed 2026-07-14 — it paid gated downward peg
+        # velocity with no matching charge on ascent, making a grip-and-bob
+        # cycle net-positive (a non-potential shaping term, Ng '99); the place
+        # keypoint term covers the same gradient without the loophole.
+        for name in ("upward", "action_magnitude", "insertion_drive"):
             assert not hasattr(pw, name), f"PegRewardWeights.{name} should be removed"
 
         pc = PegRewardConfig()

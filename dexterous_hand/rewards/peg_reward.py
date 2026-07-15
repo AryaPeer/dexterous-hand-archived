@@ -64,7 +64,7 @@ def peg_reward(
     release_height: float = -0.015,
     place_k: float = 4.0,
 ) -> tuple[jnp.ndarray, PegRewardState, dict[str, jnp.ndarray]]:
-    del previous_actions
+    del previous_actions, peg_linvel
 
     ft_weights = jnp.asarray(fingertip_weights)
     n_contacts = jnp.sum(finger_contact_mask).astype(jnp.float32)
@@ -135,21 +135,12 @@ def peg_reward(
     axis_align = jnp.abs(jnp.dot(peg_axis, hole_axis))
     axis_in_grip = axis_align * contact_scale
 
-    # align + insertion drive: gated on peg actually being above the table
+    # align: gated on peg actually being above the table
     lateral_dist = jnp.linalg.norm(peg_position[:2] - hole_position[:2])
     lateral_factor_align = 1.0 - jnp.tanh(lateral_gate_k * lateral_dist)
     peg_clearance = jnp.maximum(peg_height - table_height - peg_length * 0.5, 0.0)
     align_weight = _sigmoid((peg_clearance - 0.02) * 150.0)
     align = axis_align * lateral_factor_align * align_weight * contact_scale
-
-    insertion_drive = (
-        align_weight
-        * lateral_factor_align
-        * axis_align
-        * contact_scale
-        * jnp.maximum(-peg_linvel[2], 0.0)
-        * 5.0
-    )
 
     lateral_factor_depth = 1.0 - jnp.tanh(lateral_gate_k * lateral_dist)
     insertion_fraction = jnp.clip(insertion_depth / peg_length, 0.0, 1.0)
@@ -254,7 +245,6 @@ def peg_reward(
         + weights.force * force_penalty
         + weights.drop * drop
         + weights.action_penalty * action_penalty
-        + weights.insertion_drive * insertion_drive
         + weights.place * place
         + idle_penalty
         + idle_stage1_pen
@@ -284,7 +274,6 @@ def peg_reward(
         # curves share a common scale; total applies weights.idle_stage0/1.
         "reward/idle_stage0_penalty": idle_raw,
         "reward/idle_stage1_penalty": idle_stage1_raw,
-        "reward/insertion_drive": insertion_drive,
         "reward/place": place,
         "reward/total": total,
         "metrics/keypoint_dist": keypoint_dist,

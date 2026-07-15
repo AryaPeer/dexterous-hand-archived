@@ -21,6 +21,13 @@ class SceneConfig:
     action_smoothing_alpha: float = 0.2
     sim_timestep: float = 0.002
     frame_skip: int = 20
+    # Newton solver iteration caps, compiled into the scene by the builder.
+    # MuJoCo's defaults (100/50) are sized for CPU, where Newton early-exits
+    # on tolerance; MJX pays the configured worst case per substep, and
+    # Playground-class MJX hand tasks run 4-8. Re-run the CPU test suite and
+    # scripts/mjx_parity_check.py after any change here.
+    solver_iterations: int = 8
+    ls_iterations: int = 8
 
 
 @dataclass
@@ -91,7 +98,6 @@ class PegRewardWeights:
     action_penalty: float = 1.0
     idle_stage0: float = 1.0
     idle_stage1: float = 1.0
-    insertion_drive: float = 3.0
     # Round-16: rewards abs(dot(peg_axis, hole_axis)) * contact_scale at every
     # step while in contact, *before* lift. The last peg run (5M steps)
     # converged to peg held 85deg off vertical because no reward term
@@ -193,6 +199,9 @@ class PegSceneConfig:
     action_smoothing_alpha: float = 0.2
     sim_timestep: float = 0.002
     frame_skip: int = 20
+    # Newton solver iteration caps — see SceneConfig.solver_iterations.
+    solver_iterations: int = 8
+    ls_iterations: int = 8
 
 
 @dataclass

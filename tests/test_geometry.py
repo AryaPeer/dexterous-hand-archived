@@ -196,6 +196,71 @@ def test_under_tube_slot_is_blocked():
     assert float(model.geom_size[ped_gid][1]) >= wall_outer_x - 1e-9
 
 
+def test_compiled_scene_contact_options():
+    """MjSpec.attach() does NOT merge the hand XML's <option cone="elliptic"
+    impratio="10"/> — until 2026-07-14 the compiled scenes silently ran MuJoCo
+    defaults (pyramidal, impratio=1) while every grip proof was measured under
+    them. The builders now pin that choice explicitly; this guards the pinned
+    contact model and the MJX solver iteration caps against another silent
+    flip (e.g. an attach()-semantics change or a builder refactor)."""
+    for build, cfg in (
+        (build_scene, SceneConfig()),
+        (build_peg_scene, PegSceneConfig()),
+    ):
+        model = build(cfg)[0]
+        assert model.opt.cone == mujoco.mjtCone.mjCONE_PYRAMIDAL
+        assert model.opt.impratio == 1.0
+        assert model.opt.iterations == cfg.solver_iterations
+        assert model.opt.ls_iterations == cfg.ls_iterations
+        assert model.opt.timestep == cfg.sim_timestep
+
+
+def test_wall_touch_sensors_alive():
+    """MuJoCo touch sensors only sum contacts whose point lies INSIDE the site
+    volume. The wall sites used to be 2.5mm spheres at the centre of 6cm-tall
+    walls: a peg physically pressed into a wall registered 0.168N in the
+    contact list and 0.0 on every wall sensor, so the force penalty could
+    never fire on wall jams and 4 of the 6 contact-force obs dims were
+    constants. Press the peg into each wall (and onto the bottom plate) and
+    require the matching sensor to read the contact."""
+    cfg = PegSceneConfig()
+    model, data, nm = build_peg_scene(cfg)
+    cr = cfg.peg_radius + cfg.clearance
+    entrance_z = float(model.body("hole").pos[2])
+    upright = [1.0, 0.0, 0.0, 0.0]
+
+    # upright peg, lower end 2cm into the bore, pushed 0.3mm into the wall
+    press = cr - cfg.peg_radius + 0.0003
+    in_bore_z = entrance_z - 0.02 + cfg.peg_half_length + cfg.peg_radius
+    poses = {
+        "hole_wall_px": [press, 0.0, in_bore_z],
+        "hole_wall_nx": [-press, 0.0, in_bore_z],
+        "hole_wall_py": [0.0, press, in_bore_z],
+        "hole_wall_ny": [0.0, -press, in_bore_z],
+        # bottomed out on the plate, 0.3mm interpenetrating
+        "hole_bottom": [
+            0.0,
+            0.0,
+            entrance_z
+            - cfg.hole_depth
+            + 0.0025  # plate half-thickness (wt/2)
+            + cfg.peg_half_length
+            + cfg.peg_radius
+            - 0.0003,
+        ],
+    }
+    for wall, pos in poses.items():
+        _set_peg_pose(model, data, pos, upright)
+        mujoco.mj_forward(model, data)
+        sid = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_SENSOR, f"sensor_force_{wall}")
+        assert sid >= 0, f"sensor_force_{wall} missing from the compiled model"
+        val = float(data.sensordata[model.sensor_adr[sid]])
+        assert val > 0.0, (
+            f"peg pressed into {wall} reads {val} on its touch sensor — the "
+            f"site does not cover the contact face"
+        )
+
+
 @pytest.mark.slow
 def test_peg_drop_insertion_reaches_success_depth():
     """Sufficient condition under real physics: a peg released just above the

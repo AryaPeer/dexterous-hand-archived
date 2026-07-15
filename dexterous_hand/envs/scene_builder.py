@@ -183,6 +183,19 @@ def build_scene(
     spec = mujoco.MjSpec()
     spec.option.timestep = config.sim_timestep
     spec.option.gravity = [0.0, 0.0, -9.81]
+    # Contact model pinned EXPLICITLY: MjSpec.attach() does NOT merge the hand
+    # XML's <option cone="elliptic" impratio="10"/>, so the compiled scene was
+    # silently running MuJoCo defaults (pyramidal, impratio=1). Every grip
+    # proof, grip-bias tuning and parity trajectory was measured under those
+    # defaults — they are now the deliberate choice (also the usual MJX
+    # hand-task configuration, e.g. MuJoCo Playground). Switching to the
+    # Menagerie-intended elliptic/10 requires re-running tune_grip_bias, the
+    # geometry tests, the renders and mjx_parity_check. Guarded by
+    # tests/test_geometry.py::test_compiled_scene_contact_options.
+    spec.option.cone = mujoco.mjtCone.mjCONE_PYRAMIDAL
+    spec.option.impratio = 1.0
+    spec.option.iterations = config.solver_iterations
+    spec.option.ls_iterations = config.ls_iterations
     spec.stat.extent = 1.0
     spec.stat.center = [0.0, 0.0, config.table_height]
 

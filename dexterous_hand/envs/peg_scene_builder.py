@@ -47,6 +47,14 @@ def build_peg_scene(
     spec = mujoco.MjSpec()
     spec.option.timestep = config.sim_timestep
     spec.option.gravity = [0.0, 0.0, -9.81]
+    # Contact model + solver caps pinned explicitly — MjSpec.attach() drops the
+    # hand XML's <option> element; see the identical block in scene_builder.py
+    # for the full rationale. Guarded by
+    # tests/test_geometry.py::test_compiled_scene_contact_options.
+    spec.option.cone = mujoco.mjtCone.mjCONE_PYRAMIDAL
+    spec.option.impratio = 1.0
+    spec.option.iterations = config.solver_iterations
+    spec.option.ls_iterations = config.ls_iterations
     spec.stat.extent = 1.0
     spec.stat.center = [0.0, 0.0, config.table_height]
 
@@ -340,21 +348,34 @@ def build_peg_scene(
             solref=[0.005, 1.0],
         )
 
-    # touch-sensor sites on each wall, sized to match the wall thickness
-    wall_positions = {
-        "hole_wall_px": [cr + wt / 2, 0.0, -wh],
-        "hole_wall_nx": [-(cr + wt / 2), 0.0, -wh],
-        "hole_wall_py": [0.0, cr + wt / 2, -wh],
-        "hole_wall_ny": [0.0, -(cr + wt / 2), -wh],
-        "hole_bottom": [0.0, 0.0, -config.hole_depth],
+    # Touch-sensor sites: MuJoCo touch sensors sum only the contacts whose
+    # point lies INSIDE the site volume, so each site must cover its wall's
+    # whole contact face. The previous sites were 2.5mm spheres at the wall
+    # centres — a peg pressed into a wall registered 0.168N in the contact
+    # list and 0.0 on every wall sensor, leaving the force penalty unable to
+    # fire on wall jams and 4 obs dims constant. Box sites mirror each wall
+    # geom, inflated 2mm in EVERY dimension: contact points sit at the
+    # penetration midpoint (straddling the face), and a pressed capsule's
+    # force-bearing contact often lands on the wall's top rim — exactly the
+    # un-inflated site's boundary plane, which does not count as inside.
+    # Guarded by tests/test_geometry.py::test_wall_touch_sensors_alive.
+    pad = 0.002
+    wall_sites = {
+        "hole_wall_px": ([cr + wt / 2, 0.0, -wh], [wt / 2 + pad, cr + wt + pad, wh + pad]),
+        "hole_wall_nx": ([-(cr + wt / 2), 0.0, -wh], [wt / 2 + pad, cr + wt + pad, wh + pad]),
+        "hole_wall_py": ([0.0, cr + wt / 2, -wh], [cr + wt + pad, wt / 2 + pad, wh + pad]),
+        "hole_wall_ny": ([0.0, -(cr + wt / 2), -wh], [cr + wt + pad, wt / 2 + pad, wh + pad]),
+        "hole_bottom": (
+            [0.0, 0.0, -config.hole_depth],
+            [cr + wt + pad, cr + wt + pad, wt / 2 + pad],
+        ),
     }
-    for wall_name, pos in wall_positions.items():
-        site_size = cr if wall_name == "hole_bottom" else wt / 2
+    for wall_name, (pos, size) in wall_sites.items():
         hole_body.add_site(
             name=f"site_{wall_name}",
             pos=pos,
-            size=[site_size],
-            type=mujoco.mjtGeom.mjGEOM_SPHERE,
+            size=size,
+            type=mujoco.mjtGeom.mjGEOM_BOX,
             group=4,
         )
 

@@ -97,6 +97,17 @@ class ShadowHandPegMjxEnv(MjxVecEnv):
         self._init_qpos_grip = jnp.array(init_qpos_grip)
 
         self._grip_ctrl = jnp.array(build_grip_ctrl(self._mj_model))
+        # Action-space inverse of the settle grip ctrl. Reset seeds the EMA
+        # smoothing state (and the previous_actions obs) with this instead of
+        # zeros: a zero smoothed action maps to ctrl-range MIDPOINTS (fingers
+        # half-open, slide_z +0.025), so a zeros-init told the servos to relax
+        # the settle grip and drift the hand up 2.5cm for the first ~10 steps
+        # (EMA alpha 0.2) of every episode — pre-grasped spawns opened with an
+        # involuntary loosen-and-lurch the policy had to fight before acting.
+        self._grip_action = (
+            2.0 * (self._grip_ctrl - self._ctrl_low) / (self._ctrl_high - self._ctrl_low)
+            - 1.0
+        )
 
         self._grasp_site_id = mujoco.mj_name2id(
             self._mj_model, mujoco.mjtObj.mjOBJ_SITE, "grasp_site"
@@ -160,11 +171,14 @@ class ShadowHandPegMjxEnv(MjxVecEnv):
         qpos = jnp.where(spawn_pre_grasped, self._init_qpos_grip, self._init_qpos_table)
 
         hand_qpos = qpos[nm.hand_qpos_start : nm.hand_qpos_end]
-        # qpos[0]=slide_x, qpos[1]=slide_y are linear (meters), rest is radians.
-        # ±0.05m slider noise was kicking the peg up to 580mm during the 5-step
-        # settle. Zero it out — only the peg XY (random radius) is randomized.
+        # qpos[0:3] = slide_x/y/z are linear (meters), rest is radians — the
+        # ±0.05 joint noise is sized for radians. ±0.05m on x/y was kicking
+        # the peg up to 580mm during the 5-step settle, and ±0.05m on slide_z
+        # started ~17% of episodes with the knuckles pressed into the table.
+        # Zero all three sliders — only the peg XY (random radius) is
+        # randomized.
         noise = jax.random.uniform(k1, shape=hand_qpos.shape, minval=-0.05, maxval=0.05)
-        noise = noise.at[0:2].set(0.0)
+        noise = noise.at[0:3].set(0.0)
         qpos = qpos.at[nm.hand_qpos_start : nm.hand_qpos_end].set(hand_qpos + noise)
         qvel = jnp.zeros(mjx_model.nv)
 
@@ -233,11 +247,10 @@ class ShadowHandPegMjxEnv(MjxVecEnv):
             mjx_data.xpos[nm.peg_body_id][2], table_spawn_height
         )
 
-        n_act = self._action_size()
         env_state = PegEnvState(
             reward_state=init_peg_reward_state(initial_peg_height),
-            previous_actions=jnp.zeros(n_act),
-            smoothed_actions=jnp.zeros(n_act),
+            previous_actions=self._grip_action,
+            smoothed_actions=self._grip_action,
             stage=jnp.array(0, dtype=jnp.int32),
             no_contact_grace=jnp.array(0, dtype=jnp.int32),
             initial_peg_height=initial_peg_height,
