@@ -181,6 +181,113 @@ def test_peg_drop_insertion_reaches_success_depth():
     )
 
 
+@pytest.mark.slow
+def test_peg_transport_release_insertion():
+    """Full winning-trajectory proof under real physics: from the env's
+    pre-grasped reset (GRIP_BIAS + peg at grasp_site + 5-step settle), raise
+    the peg, servo it over the bore, ENGAGE the tip ~2cm into the bore, then
+    release — the peg must slide to the bottom (fraction 0.757) and hold
+    above success_threshold. Guards the 2026-07-14 endgame redesign:
+    - releasing above the entrance topples the peg (~6 deg self-alignment
+      cone at 4mm clearance), so the reward's place target is the ENGAGED
+      pose — this test breaks if that geometry regresses;
+    - peg<->bore friction pairs (mu=0.2): at the default mu=1.0 the released
+      peg two-point-wedged at fraction ~0.55 and never reached success depth.
+    Keep the trajectory in sync with scripts/render_peg_transport.py."""
+    import numpy as np
+
+    from dexterous_hand.envs.scene_builder import (
+        GRIP_BIAS,
+        apply_flexion_bias,
+        build_grip_ctrl,
+    )
+
+    cfg = PegSceneConfig()
+    rcfg = PegRewardConfig()
+    model, data, nm = build_peg_scene(cfg)
+    peg_len = _peg_length(cfg)
+
+    qpos = data.qpos.copy()
+    apply_flexion_bias(qpos, model, bias_map=GRIP_BIAS)
+    data.qpos[:] = qpos
+    data.qvel[:] = 0.0
+    mujoco.mj_forward(model, data)
+    sid = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_SITE, "grasp_site")
+    _set_peg_pose(model, data, data.site_xpos[sid].copy(), [1.0, 0.0, 0.0, 0.0])
+    mujoco.mj_forward(model, data)
+    grip = build_grip_ctrl(model)
+    data.ctrl[:] = grip
+    for _ in range(5):
+        mujoco.mj_step(model, data)
+
+    hole_pos = data.xpos[nm.hole_body_id].copy()
+    entrance_z = hole_pos[2]
+
+    def act(name: str) -> int:
+        return mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_ACTUATOR, name)
+
+    def slide_xy() -> np.ndarray:
+        out = []
+        for n in ("slide_x", "slide_y"):
+            jid = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_JOINT, n)
+            out.append(float(data.qpos[model.jnt_qposadr[jid]]))
+        return np.array(out)
+
+    z_cmd = 0.0
+    xy_cmd = np.zeros(2)
+    open_frac = 0.0
+
+    def do_steps(n: int, open_fingers: bool = False, servo: bool = False) -> None:
+        nonlocal xy_cmd, open_frac
+        for _ in range(n):
+            if open_fingers:
+                open_frac = min(open_frac + 0.15, 1.0)
+                c = grip * (1.0 - open_frac)
+            else:
+                c = grip.copy()
+            if servo:
+                err = hole_pos[:2] - data.xpos[nm.peg_body_id][:2]
+                desired = slide_xy() + 0.8 * err
+                xy_cmd = xy_cmd + np.clip(desired - xy_cmd, -0.003, 0.003)
+            c[act("slide_x_act")] = xy_cmd[0]
+            c[act("slide_y_act")] = xy_cmd[1]
+            lo, hi = model.actuator_ctrlrange[act("slide_z_act")]
+            c[act("slide_z_act")] = float(np.clip(z_cmd, lo, hi))
+            data.ctrl[:] = c
+            mujoco.mj_step(model, data, nstep=cfg.frame_skip)
+
+    z_cmd = 0.06
+    do_steps(15)
+    xy_cmd = slide_xy() + (hole_pos[:2] - data.xpos[nm.peg_body_id][:2])
+    do_steps(25)
+    do_steps(15, servo=True)
+    tip_z = data.xpos[nm.peg_body_id][2] - peg_len / 2.0
+    z_cmd += entrance_z + 0.01 - tip_z
+    do_steps(15, servo=True)
+    for _ in range(10):  # gradual engagement descent, servoing
+        tip_z = data.xpos[nm.peg_body_id][2] - peg_len / 2.0
+        z_cmd += float(np.clip((entrance_z - 0.020) - tip_z, -0.004, 0.004))
+        do_steps(2, servo=True)
+    do_steps(15, open_fingers=True)
+    z_cmd += 0.06
+    do_steps(25, open_fingers=True)
+
+    frac = _measure_depth(cfg, model, data, nm) / peg_len
+    assert frac >= rcfg.success_threshold + 0.03, (
+        f"transport+engaged-release settles at fraction {frac:.3f} < "
+        f"success_threshold+0.03 — the winning trajectory is no longer "
+        f"physically achievable (check bore friction pairs, release geometry, "
+        f"grip bias)"
+    )
+    fracs = []
+    for _ in range(50):
+        do_steps(1, open_fingers=True)
+        fracs.append(_measure_depth(cfg, model, data, nm) / peg_len)
+    assert np.min(fracs) >= rcfg.success_threshold, (
+        f"released peg does not HOLD success depth (min {np.min(fracs):.3f})"
+    )
+
+
 # --- grasp task -------------------------------------------------------------
 
 # A grip seed measured to hold the cube through a 20cm+ slide_z lift (from a

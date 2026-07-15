@@ -17,6 +17,32 @@ before this full run and re-derive floors from it.** The lift reward
 remains capped (weight 10, cap 1.0) so `reward/lift` sits well below
 the old `>= 1.0` bar and is deliberately NOT gated.
 
+**2026-07-14 — endgame redesigned around the physically winning move.**
+The bore (12mm) cannot admit fingers, so success REQUIRES releasing the
+peg over the bore and letting gravity finish. The old design fought
+that: `complete` was contact-gated (releasing forfeited the entire
+completion payment), success TERMINATED the episode (discounted-return
+math preferred farming shaping below the threshold forever), the stage
+machine demoted a released-inserted peg to stage 0 (idle-penalizing the
+solved state), and after `lift` saturated there was no gradient toward
+the bore. Changes (validated by CPU preflight + a full scripted
+transport-and-release trajectory that bottoms out at fraction 0.757 and
+holds — see `tests/test_geometry.py::test_peg_transport_release_insertion`
+and `scripts/render_peg_transport.py`):
+- `place` keypoint reward (Factory/IndustReal-style, Narang'22/Tang'23)
+  toward the ENGAGED release pose — peg vertical, tip 1.5cm inside the
+  bore. Releasing from above the entrance topples the peg (~6° self-
+  alignment cone at 4mm clearance); an engaged tip is guided down.
+- `complete` no longer contact-gated; success no longer terminates the
+  episode. The settled peg is now the highest-paying per-step state
+  (preflight: ~217/step vs ~47/step for the below-threshold farm state,
+  monotone along table→lift→engage→release).
+- peg<->bore friction pairs (mu=0.2, machined-part range): at the mu=1.0
+  default the released peg two-point-wedged at fraction ~0.55.
+- drop penalty never fires on an inserted peg; obs unchanged (134).
+Reward semantics changed wholesale: do NOT resume pre-2026-07-14
+checkpoints; run the 5M sanity fresh.
+
 ## 1. Pod
 
 CUDA 12.4+, >=24 GB VRAM. RTX 5090 is canonical; 4090 also works but

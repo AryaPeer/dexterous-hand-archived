@@ -98,6 +98,15 @@ class PegRewardWeights:
     # incentivized vertical grip until align_weight fired (peg lifted >2cm),
     # by which time the policy had already settled on a sideways grip.
     axis_in_grip: float = 1.0
+    # 2026-07-14: keypoint shaping toward the RELEASE pose (peg vertical, tip
+    # release_height above the entrance) — fills the post-containment-fix
+    # gradient dead zone between lift saturation (5cm) and in-bore depth.
+    # See the place term in peg_reward.py for why the target is the release
+    # pose and not the inserted pose (wall-press local minimum). 8.0 makes the
+    # transport gradient (lifted-at-spawn -> hover-at-release: place 0.40 ->
+    # 1.0) ~+5/step against a ~27/step gripped-lifted baseline — the only x/y
+    # gradient after grasp, so it must be visible over grip-noise.
+    place: float = 8.0
 
 
 @dataclass
@@ -126,6 +135,18 @@ class PegRewardConfig:
     peg_hold_steps: int = 10
     reach_tanh_k: float = 5.0
     fingertip_weights: tuple[float, float, float, float, float] = (2.5, 1.0, 1.0, 1.0, 1.0)
+    # place-term shape: target tip height RELATIVE to the hole entrance
+    # (negative = inside the bore), and the tanh sharpness on the summed
+    # 2-keypoint distance. -0.015 targets the ENGAGED release pose: a peg
+    # released with its tip above the entrance topples (measured: 7.6cm
+    # capsule, 4mm-clearance bore -> ~6 deg self-alignment cone, every
+    # scripted above-entrance release fell flat across the tube top), while
+    # a tip 1.5cm inside the bore is laterally guided and slides down —
+    # IndustReal's (Tang'23) engagement distinction. Fingers gripping the
+    # peg's midpoint are still ~2cm above the rim at this depth, so the
+    # engaged pose is reachable while gripped.
+    release_height: float = -0.015
+    place_k: float = 4.0
 
 
 @dataclass

@@ -301,6 +301,23 @@ def build_peg_scene(
         **wall_kwargs,
     )
 
+    # Peg<->bore friction override. MuJoCo combines pair friction as the
+    # element-wise MAX of the two geoms, and both peg and walls default to
+    # sliding mu=1.0 — at mu=1 a released 0.02kg peg two-point-wedges in the
+    # bore (measured: engaged releases settled at fraction ~0.55 instead of
+    # the 0.757 bottom-out; Whitney's classic jamming analysis). Explicit
+    # <pair> overrides beat the max-combination, giving machined-part
+    # friction (mu~0.2, cf. Factory/IndustReal assets) against the bore while
+    # the peg keeps mu=1.0 against the fingertips for gripping.
+    for wall_name in ("hole_wall_px", "hole_wall_nx", "hole_wall_py", "hole_wall_ny", "hole_bottom"):
+        spec.add_pair(
+            geomname1="peg_geom",
+            geomname2=wall_name,
+            friction=[0.2, 0.2, 0.005, 0.0001, 0.0001],
+            condim=4,
+            solref=[0.005, 1.0],
+        )
+
     # touch-sensor sites on each wall, sized to match the wall thickness
     wall_positions = {
         "hole_wall_px": [cr + wt / 2, 0.0, -wh],

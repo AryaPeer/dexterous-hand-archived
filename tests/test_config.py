@@ -61,6 +61,10 @@ class TestConfigDefaults:
         assert c.weights.opposition == 1.0
         assert c.weights.axis_in_grip == 1.0
         assert c.weights.insertion_drive == 3.0
+        # place: keypoint shaping to the ENGAGED release pose (2026-07-14) —
+        # the only x/y gradient between lift saturation and in-bore depth.
+        assert c.weights.place == 8.0
+        assert c.release_height == -0.015
         assert c.lateral_gate_k == 5.0
         assert c.peg_hold_steps == 10
         assert c.success_threshold == 0.7

@@ -61,6 +61,8 @@ def peg_reward(
     fingertip_weights: tuple[float, float, float, float, float] = (2.5, 1.0, 1.0, 1.0, 1.0),
     depth_reward_scale: float = 10.0,
     idle_grace_steps: int = 3,
+    release_height: float = -0.015,
+    place_k: float = 4.0,
 ) -> tuple[jnp.ndarray, PegRewardState, dict[str, jnp.ndarray]]:
     del previous_actions
 
@@ -153,16 +155,50 @@ def peg_reward(
     insertion_fraction = jnp.clip(insertion_depth / peg_length, 0.0, 1.0)
     depth_reward = depth_reward_scale * insertion_fraction * lateral_factor_depth
 
+    # place: 2-keypoint distance to the ENGAGED-RELEASE pose — peg vertical
+    # with its tip |release_height| INSIDE the bore (Factory/IndustReal-style
+    # keypoint shaping, Narang'22/Tang'23, with the target moved from the
+    # fully-inserted pose to the engaged release pose). Rationale:
+    # (1) after `lift` saturates at lift_target there was no meaningful
+    # gradient pulling the peg the remaining way up-and-over the bore — the
+    # old "descend anywhere" depth gradient that filled this gap was the
+    # false-success exploit, and the containment fix correctly zeroed it,
+    # leaving a dead zone that ends exactly at this term;
+    # (2) targeting the FULLY-inserted pose would create a wall-press local
+    # minimum — an on-table peg 5cm out is Euclidean-closer to the inserted
+    # keypoints (kd 0.109) than a peg correctly hovering over the entrance
+    # (kd 0.135). With the shallow engaged target the hover state stays
+    # strictly closer than any on-table pose, and reaching it requires
+    # entering from above;
+    # (3) the target is ENGAGED (tip ~1.5cm into the bore), not above the
+    # entrance, because a capsule released above the entrance topples (4mm
+    # clearance over 7.6cm = ~6 deg self-alignment cone; measured), while an
+    # engaged tip is laterally guided and slides to the bottom on release.
+    # The in-bore endgame is paid by depth+complete, not place. Ungated: its
+    # max is the correct behavior and it pays pennies elsewhere.
+    axis_dot_ph = jnp.dot(peg_axis, hole_axis)
+    tip = peg_position - peg_axis * jnp.sign(axis_dot_ph) * (peg_length / 2.0)
+    top = peg_position + peg_axis * jnp.sign(axis_dot_ph) * (peg_length / 2.0)
+    target_tip = hole_position + hole_axis * release_height
+    target_top = target_tip + hole_axis * peg_length
+    keypoint_dist = jnp.linalg.norm(tip - target_tip) + jnp.linalg.norm(top - target_top)
+    place = 1.0 - jnp.tanh(place_k * keypoint_dist)
+
     new_hold = jnp.where(
         insertion_fraction > success_threshold,
         state.insertion_hold_steps + 1,
         jnp.array(0, dtype=jnp.int32),
     )
+    # NO contact_scale here: the bore (12mm) cannot admit fingers, so the only
+    # physical way to reach success depth is to RELEASE the peg over the bore
+    # and let gravity finish (see config hole_top comment + the drop test).
+    # Gating complete on contacts forfeited the entire completion payment at
+    # the exact moment the policy did the right thing — the settled peg paid
+    # ~0 while a gripped hover below threshold farmed shaping forever.
     complete = (
         complete_bonus
         * axis_align
         * lateral_factor_align
-        * contact_scale
         * _sigmoid(20.0 * (insertion_fraction - success_threshold))
         * _sigmoid((new_hold.astype(jnp.float32) - peg_hold_steps) / 2.0)
     )
@@ -170,7 +206,11 @@ def peg_reward(
     force_excess = jnp.maximum(0.0, contact_force_magnitude - force_threshold)
     force_penalty = -0.01 * force_excess**2
 
-    just_dropped = state.was_lifted & (lift_height < 0.01)
+    # A peg released INTO the bore ends ~19.5mm above its table spawn height,
+    # so it never trips the lift<0.01 test today — but that margin is set by
+    # hole geometry, not by intent. Guard explicitly: insertion is never a
+    # "drop".
+    just_dropped = state.was_lifted & (lift_height < 0.01) & (insertion_fraction < 0.1)
     drop = jnp.where(just_dropped, drop_penalty_value, 0.0)
     was_lifted = jnp.where(just_dropped, False, was_lifted_next)
 
@@ -215,6 +255,7 @@ def peg_reward(
         + weights.drop * drop
         + weights.action_penalty * action_penalty
         + weights.insertion_drive * insertion_drive
+        + weights.place * place
         + idle_penalty
         + idle_stage1_pen
     )
@@ -244,7 +285,9 @@ def peg_reward(
         "reward/idle_stage0_penalty": idle_raw,
         "reward/idle_stage1_penalty": idle_stage1_raw,
         "reward/insertion_drive": insertion_drive,
+        "reward/place": place,
         "reward/total": total,
+        "metrics/keypoint_dist": keypoint_dist,
         "metrics/stage": stage.astype(jnp.float32),
         "metrics/num_finger_contacts": n_contacts,
         "metrics/peg_height": peg_height,

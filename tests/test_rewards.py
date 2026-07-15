@@ -249,6 +249,59 @@ class TestPegJax:
         asymptote = cfg.complete_bonus / (1.0 + float(np.exp(-20.0 * excess)))
         np.testing.assert_allclose(prev_complete, asymptote, rtol=1e-3)
 
+    def test_complete_pays_with_zero_contacts(self):
+        # Regression for the 2026-07-14 release-forfeit bug: the bore cannot
+        # admit fingers, so success REQUIRES releasing the peg — complete was
+        # gated on contact_scale and paid ~0 for a settled released peg while
+        # a gripped hover below threshold farmed shaping forever.
+        kw = self._kw()
+        kw["insertion_depth"] = jnp.asarray(0.055)
+        kw["finger_contact_mask"] = jnp.array([False] * 5)
+        state = init_peg_reward_state(0.85)
+        value = 0.0
+        for _ in range(30):
+            _, state, info = peg_reward(state=state, **kw)
+            value = float(info["reward/complete"])
+        assert value > 100.0, (
+            f"released settled peg earns complete={value:.1f} — the completion "
+            f"payment must not require finger contact"
+        )
+
+    def test_place_monotone_toward_engaged_pose(self):
+        # place must pay more the closer the peg pose is to the engaged
+        # release pose (vertical, tip |release_height| inside the bore).
+        cfg = PegRewardConfig()
+        peg_length = 0.06
+        hole_z = 0.88
+
+        def place_at(peg_xy, peg_z):
+            kw = self._kw()
+            kw["peg_position"] = jnp.array([peg_xy[0], peg_xy[1], peg_z])
+            _, _, info = peg_reward(state=init_peg_reward_state(0.85), **kw)
+            return float(info["reward/place"])
+
+        engaged_z = hole_z + cfg.release_height + peg_length / 2.0
+        p_table = place_at((0.05, 0.0), 0.85)
+        p_lifted = place_at((0.05, 0.0), 0.90)
+        p_engaged = place_at((0.0, 0.0), engaged_z)
+        assert p_table < p_engaged
+        assert p_lifted < p_engaged
+        assert p_engaged > 0.9
+
+    def test_drop_penalty_not_fired_when_inserted(self):
+        # Releasing the peg INTO the bore is the winning move; the was_lifted
+        # drop penalty must never fire on an inserted peg even if its height
+        # ends near the spawn height.
+        kw = self._kw()
+        state = init_peg_reward_state(0.85)
+        state = state._replace(was_lifted=jnp.array(True))
+        kw["peg_position"] = jnp.array([0.0, 0.0, 0.855])  # lift_height ~0.005
+        kw["peg_height"] = jnp.asarray(0.855)
+        kw["insertion_depth"] = jnp.asarray(0.045)  # fraction 0.75
+        kw["finger_contact_mask"] = jnp.array([False] * 5)
+        _, _, info = peg_reward(state=state, **kw)
+        assert float(info["reward/drop"]) == 0.0
+
     def test_complete_below_threshold_stays_small(self):
         # below the success_threshold (0.7), the insertion-fraction sigmoid
         # collapses the bonus toward zero independent of hold count.

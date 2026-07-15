@@ -37,53 +37,74 @@ def check_peg() -> bool:
     # On-table grasp height: the grasp-and-sit operating point we must escape.
     initial_z = table_h + scene.peg_half_length + scene.peg_radius + 0.001
 
-    def run(peg_z: float) -> dict:
+    def run(
+        peg_z: float,
+        peg_xy: tuple[float, float] = (0.0, 0.0),
+        gripped: bool = True,
+        insertion_depth: float = 0.0,
+        stage: int = 1,
+        steady_steps: int = 1,
+    ) -> dict:
+        """Evaluate the reward at a synthetic state. steady_steps > 1 re-runs
+        the reward against its own state to ramp counters (hold sigmoid) to
+        their steady per-step value."""
         state = init_peg_reward_state(initial_z)
-        # 5 fingers actively contacting the peg with thumb opposition
-        fp = jnp.array(
-            [
-                [+0.005, 0.0, peg_z],   # thumb
-                [-0.005, 0.0, peg_z],   # idx
-                [-0.005, 0.005, peg_z], # mid
-                [-0.005, -0.005, peg_z],# ring
-                [-0.005, -0.01, peg_z], # little
-            ]
-        )
-        _, _, info = peg_reward(
-            state=state,
-            stage=jnp.asarray(1),
-            finger_positions=fp,
-            peg_position=jnp.array([0.0, 0.0, peg_z]),
-            peg_axis=jnp.array([0.0, 0.0, 1.0]),
-            hole_position=jnp.array([0.0, 0.0, hole_z]),
-            hole_axis=jnp.array([0.0, 0.0, 1.0]),
-            insertion_depth=jnp.asarray(0.0),
-            contact_force_magnitude=jnp.asarray(0.0),
-            finger_contact_mask=jnp.array([True, True, True, True, True]),
-            peg_height=jnp.asarray(peg_z),
-            peg_linvel=jnp.zeros(3),
-            actions=jnp.zeros(23),
-            previous_actions=jnp.zeros(23),
-            weights=cfg.weights,
-            peg_length=pl,
-            lift_target=cfg.lift_target,
-            table_height=table_h,
-            drop_penalty_value=cfg.drop_penalty,
-            complete_bonus=cfg.complete_bonus,
-            force_threshold=cfg.force_threshold,
-            idle_stage0_penalty=cfg.idle_stage0_penalty,
-            idle_stage1_penalty=cfg.idle_stage1_penalty,
-            idle_stage1_min_contacts=cfg.idle_stage1_min_contacts,
-            lift_step_threshold=cfg.lift_step_threshold,
-            lateral_gate_k=cfg.lateral_gate_k,
-            idle_stage_cutoff=cfg.idle_stage_cutoff,
-            success_threshold=cfg.success_threshold,
-            peg_hold_steps=cfg.peg_hold_steps,
-            reach_tanh_k=cfg.reach_tanh_k,
-            fingertip_weights=cfg.fingertip_weights,
-            depth_reward_scale=cfg.depth_reward_scale,
-            idle_grace_steps=cfg.idle_grace_steps,
-        )
+        px, py = peg_xy
+        if gripped:
+            # 5 fingers actively contacting the peg with thumb opposition
+            fp = jnp.array(
+                [
+                    [px + 0.005, py, peg_z],
+                    [px - 0.005, py, peg_z],
+                    [px - 0.005, py + 0.005, peg_z],
+                    [px - 0.005, py - 0.005, peg_z],
+                    [px - 0.005, py - 0.01, peg_z],
+                ]
+            )
+            mask = jnp.array([True, True, True, True, True])
+        else:
+            # released: hand hovering above, no contacts
+            fp = jnp.tile(jnp.array([px, py, peg_z + 0.08]), (5, 1))
+            mask = jnp.array([False] * 5)
+        info: dict = {}
+        for _ in range(steady_steps):
+            _, state, info = peg_reward(
+                state=state,
+                stage=jnp.asarray(stage),
+                finger_positions=fp,
+                peg_position=jnp.array([px, py, peg_z]),
+                peg_axis=jnp.array([0.0, 0.0, 1.0]),
+                hole_position=jnp.array([0.0, 0.0, hole_z]),
+                hole_axis=jnp.array([0.0, 0.0, 1.0]),
+                insertion_depth=jnp.asarray(insertion_depth),
+                contact_force_magnitude=jnp.asarray(0.0),
+                finger_contact_mask=mask,
+                peg_height=jnp.asarray(peg_z),
+                peg_linvel=jnp.zeros(3),
+                actions=jnp.zeros(23),
+                previous_actions=jnp.zeros(23),
+                weights=cfg.weights,
+                peg_length=pl,
+                lift_target=cfg.lift_target,
+                table_height=table_h,
+                drop_penalty_value=cfg.drop_penalty,
+                complete_bonus=cfg.complete_bonus,
+                force_threshold=cfg.force_threshold,
+                idle_stage0_penalty=cfg.idle_stage0_penalty,
+                idle_stage1_penalty=cfg.idle_stage1_penalty,
+                idle_stage1_min_contacts=cfg.idle_stage1_min_contacts,
+                lift_step_threshold=cfg.lift_step_threshold,
+                lateral_gate_k=cfg.lateral_gate_k,
+                idle_stage_cutoff=cfg.idle_stage_cutoff,
+                success_threshold=cfg.success_threshold,
+                peg_hold_steps=cfg.peg_hold_steps,
+                reach_tanh_k=cfg.reach_tanh_k,
+                fingertip_weights=cfg.fingertip_weights,
+                depth_reward_scale=cfg.depth_reward_scale,
+                idle_grace_steps=cfg.idle_grace_steps,
+                release_height=cfg.release_height,
+                place_k=cfg.place_k,
+            )
         return info
 
     print("\n=== PEG reward gradient (round-14) ===\n")
@@ -120,7 +141,53 @@ def check_peg() -> bool:
 
     print(f"  GATE 1: delta_total >= {bar_delta}     {'PASS' if pass_delta else 'FAIL'}")
     print(f"  GATE 2: lifting beats grasp          {'PASS' if pass_lift_vs_grasp else 'FAIL'}")
-    return pass_delta and pass_lift_vs_grasp
+
+    # --- 2026-07-14: full winning-trajectory monotonicity + release dominance.
+    # States along the intended demo: gripped on table (at spawn radius) ->
+    # gripped lifted -> gripped at the release pose over the bore -> RELEASED,
+    # settled in the tube (fraction 0.757, no contacts). Each must out-pay the
+    # previous per-step, and the settled state must dominate BOTH the hover
+    # and the "grip the peg partially inserted just below threshold" farm
+    # state — with the old contact-gated complete + success terminal, farming
+    # beat completing and releasing forfeited the completion payment.
+    spawn_r = scene.spawn_min_radius
+    s_table = run(initial_z, peg_xy=(spawn_r, 0.0))
+    s_lift = run(initial_z + 0.05, peg_xy=(spawn_r, 0.0), stage=2)
+    # the release pose is ENGAGED (tip -release_height inside the bore), so
+    # the gripped hover state carries the matching insertion depth
+    hover_z = hole_z + cfg.release_height + pl / 2.0
+    s_hover = run(hover_z, stage=3, insertion_depth=max(0.0, -cfg.release_height))
+    settled_depth = scene.hole_depth - 0.0025  # peg resting on hole_bottom plate
+    s_settled = run(
+        hole_z - settled_depth + pl / 2.0,
+        gripped=False,
+        insertion_depth=settled_depth,
+        stage=3,
+        steady_steps=30,
+    )
+    farm_depth = 0.69 * pl  # gripped just below success_threshold=0.7
+    s_farm = run(hole_z - farm_depth + pl / 2.0, insertion_depth=farm_depth,
+                 stage=3, steady_steps=30)
+
+    t_table = float(s_table["reward/total"])
+    t_lift = float(s_lift["reward/total"])
+    t_hover = float(s_hover["reward/total"])
+    t_settled = float(s_settled["reward/total"])
+    t_farm = float(s_farm["reward/total"])
+    print()
+    print("  winning-trajectory per-step totals:")
+    print(f"    gripped on table (r={spawn_r*100:.0f}cm)  = {t_table:>9.3f}")
+    print(f"    gripped lifted 5cm             = {t_lift:>9.3f}")
+    print(f"    gripped at release pose        = {t_hover:>9.3f}")
+    print(f"    RELEASED, settled in bore      = {t_settled:>9.3f}")
+    print(f"    farm state (grip @ frac 0.69)  = {t_farm:>9.3f}")
+    monotone = t_table < t_lift < t_hover < t_settled
+    beats_farm = t_settled > t_farm * 1.5
+    print()
+    print(f"  GATE 3: monotone table<lift<hover<settled   {'PASS' if monotone else 'FAIL'}")
+    print(f"  GATE 4: settled > 1.5x farm state           {'PASS' if beats_farm else 'FAIL'}")
+
+    return pass_delta and pass_lift_vs_grasp and monotone and beats_farm
 
 
 def check_grasp() -> bool:

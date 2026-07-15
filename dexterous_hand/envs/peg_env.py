@@ -289,6 +289,11 @@ class ShadowHandPegMjxEnv(MjxVecEnv):
         peg_lifted = peg_pos[2] > env_state.initial_peg_height + 0.02
         peg_near_hole = jnp.linalg.norm(peg_pos[:2] - hole_pos[:2]) < 0.03
         peg_aligned = jnp.abs(jnp.dot(peg_axis, hole_axis)) > 0.95
+        # An in-bore peg is stage 3 regardless of contacts: the winning move is
+        # to RELEASE the peg over the bore (fingers cannot fit inside), so the
+        # no-contact grace must not demote the solved state to stage 0 — that
+        # made idle_stage0 charge -0.3/step on a successfully inserted peg.
+        peg_inserted = insertion_depth > 0.02
 
         new_grace = jnp.where(
             n_contacts == 0, env_state.no_contact_grace + 1, jnp.array(0, dtype=jnp.int32)
@@ -297,9 +302,11 @@ class ShadowHandPegMjxEnv(MjxVecEnv):
         target = jnp.array(0, dtype=jnp.int32)
         target = jnp.where(fingers_on_peg, 1, target)
         target = jnp.where(peg_lifted, 2, target)
-        target = jnp.where(peg_near_hole & peg_aligned, 3, target)
+        target = jnp.where((peg_near_hole & peg_aligned) | peg_inserted, 3, target)
 
-        new_stage = jnp.where(new_grace >= 5, 0, jnp.maximum(env_state.stage, target))
+        new_stage = jnp.where(
+            (new_grace >= 5) & ~peg_inserted, 0, jnp.maximum(env_state.stage, target)
+        )
 
         peg_height = peg_pos[2]
 
@@ -337,14 +344,22 @@ class ShadowHandPegMjxEnv(MjxVecEnv):
             fingertip_weights=self.reward_config.fingertip_weights,
             depth_reward_scale=self.reward_config.depth_reward_scale,
             idle_grace_steps=self.reward_config.idle_grace_steps,
+            release_height=self.reward_config.release_height,
+            place_k=self.reward_config.place_k,
         )
 
-
+        # No success terminal (2026-07-14, mirrors grasp): with a terminal,
+        # discounted-return math preferred hovering below the success
+        # threshold and farming shaping forever over completing (the audit's
+        # ~21/step vs one-shot ~125 comparison). Now the settled-in-bore peg
+        # is the highest-paying per-step state (depth + ungated complete),
+        # so inserting AND staying inserted is the optimum. is_success keeps
+        # the same criterion for logging/gates.
         insertion_complete = (
             insertion_depth > self.reward_config.success_threshold * self._peg_length
         ) & (new_reward_state.insertion_hold_steps >= self.reward_config.peg_hold_steps)
         fell = peg_pos[2] < self.scene_config.table_height - 0.1
-        done = insertion_complete | fell
+        done = fell
         info["is_success"] = insertion_complete.astype(jnp.float32)
 
         new_env_state = PegEnvState(
