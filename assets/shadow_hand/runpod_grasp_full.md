@@ -38,7 +38,7 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 source $HOME/.local/bin/env
 
 cd ~
-git clone -b cleanup-dead-code https://github.com/AryaPeer/Dexterous-Hand.git dexterous_hand
+git clone https://github.com/AryaPeer/Dexterous-Hand.git dexterous_hand
 cd dexterous_hand
 uv sync --extra mjx
 mkdir -p runs
