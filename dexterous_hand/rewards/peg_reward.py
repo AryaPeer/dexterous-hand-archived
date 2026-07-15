@@ -53,7 +53,7 @@ def peg_reward(
     idle_stage1_penalty: float = -0.1,
     idle_stage1_min_contacts: int = 2,
     lift_step_threshold: float = 0.005,
-    lateral_gate_k: float = 10.0,
+    lateral_gate_k: float = 5.0,
     idle_stage_cutoff: int = 3,
     success_threshold: float = 0.7,
     peg_hold_steps: int = 10,

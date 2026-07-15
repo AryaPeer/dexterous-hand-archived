@@ -4,11 +4,18 @@ Single 5090 pod, ~120 hr, ~$120 at measured 316 fps for PPO+MJX at 768
 envs. The 10M and 30M gates are now **automatic** — the training process
 prints a diagnostic and stops itself if the task metrics regress or stall,
 so a stuck policy costs ~$8 or ~$24 instead of $120. No manual kill needed
-(disable with `--no-gate` if you want to override). Bars are derived from
-the 2026-06-01 5M sanity (axis_align 0.955, insertion_depth 0.060,
-complete 3.24, stage 2.65, insertion_hold_steps 1.83), NOT the older
-round-13/14 bars — the lift reward was capped (weight 10, cap 1.0) so
-`reward/lift` is now ~0.07 and is deliberately NOT gated.
+(disable with `--no-gate` if you want to override).
+
+**2026-06-10:** the insertion-depth metric gained a lateral-containment
+gate (`get_insertion_depth_jax`) — before it, ANY peg at table level
+scored insertion fraction 1.0, so the 2026-06-01 5M sanity numbers
+(insertion_depth 0.060, complete 3.24, hold 1.83) measured a
+drop-the-peg exploit, not insertion, and were retired as gate baselines.
+Current floors are first-principles collapse bars (see
+`scripts/training/train_peg.py::PEG_GATES`); **run a fresh 5M sanity
+before this full run and re-derive floors from it.** The lift reward
+remains capped (weight 10, cap 1.0) so `reward/lift` sits well below
+the old `>= 1.0` bar and is deliberately NOT gated.
 
 ## 1. Pod
 
@@ -48,7 +55,7 @@ uv run python -c "import jax; print(jax.devices())"
 # expected: [CudaDevice(id=0)]
 
 uv run python -c "import jax; x = jax.numpy.ones((4,4)); print((x @ x).sum())"
-# expected: 16.0 (no CUDNN_STATUS_NOT_INITIALIZED)
+# expected: 64.0 (no CUDNN_STATUS_NOT_INITIALIZED)
 ```
 
 If JAX still errors with `CUDNN_STATUS_NOT_INITIALIZED` despite the pin,
@@ -99,17 +106,22 @@ The run gates itself — you don't run anything. At ~10M (~9 hr, ~$8) and
 floors and **exits the process cleanly** if any metric is below floor.
 Floors (source of truth: `scripts/training/train_peg.py::PEG_GATES`):
 
-10M — vertical grip + reaching insertion:
-- `metrics/axis_align >= 0.70`         (5M 0.955; round-16 collapsed to 0.07)
-- `metrics/stage >= 1.5`              (5M 2.65; past grasp-and-sit)
-- `metrics/insertion_depth >= 0.040`  (5M 0.060; ~0.53 of peg length)
+10M — vertical lifted grip (real insertion not expected yet):
+- `metrics/axis_align >= 0.70`   (round-16 collapse mode was 0.07)
+- `metrics/stage >= 1.5`         (past grasp-and-sit)
+- `metrics/peg_height >= 0.45`   (peg held lifted, not dropped; round-14 bar)
 
-30M — insertion solidifying:
-- `metrics/axis_align >= 0.80`            (5M 0.955)
-- `metrics/insertion_depth >= 0.050`      (5M 0.060; ~0.66 frac)
-- `reward/complete >= 1.0`                (5M 3.24; completions firing)
-- `metrics/insertion_hold_steps >= 2.5`   (5M 1.83; the sustained hold must
-  climb toward the 10-step success — a flat ~1.8 = stalled)
+30M — insertion exists:
+- `metrics/axis_align >= 0.80`              (vertical grip held)
+- `metrics/insertion_depth >= 0.001`        (in-bore insertion happening at
+  all — with the containment-gated metric an exact 0 over the ~1.5M-step
+  window means the policy never inserts)
+- `metrics/insertion_hold_steps >= 0.05`    (some sustained in-bore holds)
+
+These are deliberately loose collapse bars, not health bars — the old
+sanity-derived floors were measured with the pre-containment metric and
+would either pass an exploiting run or kill an honest one. Re-derive
+real floors from the first post-fix 5M sanity.
 
 `reward/lift` is intentionally NOT gated: the lift weight was capped
 (weight 10, cap 1.0), so it sits at ~0.07 and the old `>= 1.0` bar would

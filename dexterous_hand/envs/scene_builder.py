@@ -36,6 +36,12 @@ FINGERTIP_OFFSETS: dict[str, list[float]] = {
 FINGER_BODY_PREFIXES = ["rh_ff", "rh_mf", "rh_rf", "rh_lf", "rh_th"]
 FINGER_TOUCH_SITE_NAMES = ["ff_touch", "mf_touch", "rf_touch", "lf_touch", "th_touch"]
 
+# Grasp-scene vertical slide: joint range and the reset/hover position. The
+# reset qpos is the ctrl midpoint so a zero (smoothed) action holds the reset
+# height instead of jerking the hand at episode start.
+SLIDE_Z_RANGE: tuple[float, float] = (-0.05, 0.20)
+SLIDE_Z_INIT: float = (SLIDE_Z_RANGE[0] + SLIDE_Z_RANGE[1]) / 2.0
+
 # Pre-curl applied at reset for table-top tasks (no object pre-grip)
 TABLE_TASK_FLEXION_BIAS: dict[str, float] = {
     "rh_FFJ3": 1.2,
@@ -232,6 +238,19 @@ def build_scene(
         axis=[0, 1, 0],
         range=[-0.15, 0.15],
     )
+    # Vertical arm DOF. Without it the hand is bolted at mount_height and the
+    # only lift mechanism is finger curl (~1cm ceiling) — which is why grasp
+    # lift_target eroded 0.1 -> 0.012 over rounds 11-13 while every reference
+    # implementation (Adroit relocate: 6-DOF arm; robosuite Lift: full arm;
+    # peg task in this repo: slide_z) gives the hand vertical mobility.
+    # Range floor -0.05 lets fingers reach the table; +0.20 gives a visible
+    # pick-up-and-hold. SLIDE_Z_INIT (ctrl midpoint) is the reset hover.
+    slider.add_joint(
+        name="slide_z",
+        type=mujoco.mjtJoint.mjJNT_SLIDE,
+        axis=[0, 0, 1],
+        range=[SLIDE_Z_RANGE[0], SLIDE_Z_RANGE[1]],
+    )
 
     mount = slider.add_body(
         name="hand_mount",
@@ -263,6 +282,21 @@ def build_scene(
         biasprm=[0, -100, -10, 0, 0, 0, 0, 0, 0, 0],
         ctrlrange=[-0.15, 0.15],
         forcerange=[-30, 30],
+    )
+    # Same gains as the peg scene's slide_z: it fights gravity on the whole
+    # ~4 kg hand, so kp=100 (the x/y gain) would sag to the joint floor under
+    # load. kp=8000 + matching damping + 250 N holds position with sub-cm sag
+    # while lifting hand + object.
+    spec.add_actuator(
+        name="slide_z_act",
+        target="slide_z",
+        trntype=mujoco.mjtTrn.mjTRN_JOINT,
+        gaintype=mujoco.mjtGain.mjGAIN_FIXED,
+        biastype=mujoco.mjtBias.mjBIAS_AFFINE,
+        gainprm=[8000, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+        biasprm=[0, -8000, -250, 0, 0, 0, 0, 0, 0, 0],
+        ctrlrange=[SLIDE_Z_RANGE[0], SLIDE_Z_RANGE[1]],
+        forcerange=[-250, 250],
     )
 
     hand_xml = str(ASSETS_DIR / "right_hand.xml")

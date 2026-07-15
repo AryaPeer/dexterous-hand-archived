@@ -145,8 +145,8 @@ def check_grasp() -> bool:
             object_position=jnp.array([0.0, 0.0, obj_z]),
             object_linear_velocity=jnp.zeros(3),
             finger_contact_mask=jnp.array([True, True, True, True, True]),
-            actions=jnp.zeros(22),
-            previous_actions=jnp.zeros(22),
+            actions=jnp.zeros(23),
+            previous_actions=jnp.zeros(23),
             table_height=table_h,
             lift_target=cfg.lift_target,
             hold_velocity_threshold=cfg.hold_velocity_threshold,
@@ -164,7 +164,7 @@ def check_grasp() -> bool:
 
     print("\n=== GRASP reward gradient (round-14) ===\n")
     info_sit = run(initial_z + 0.0)
-    info_lift = run(initial_z + cfg.lift_target)  # at lift_target (12mm)
+    info_lift = run(initial_z + cfg.lift_target)  # at lift_target
 
     total_sit = float(info_sit["reward/total"])
     total_lift = float(info_lift["reward/total"])
@@ -202,7 +202,7 @@ def check_grasp() -> bool:
     pass_delta = delta_total >= bar_delta
 
     print(f"  GATE 1: delta_total >= {bar_delta}             {'PASS' if pass_delta else 'FAIL'}")
-    print(f"  GATE 2: monotonic 0mm -> 6mm -> 12mm        {'PASS' if monotonic else 'FAIL'}")
+    print(f"  GATE 2: monotonic 0 -> half -> full target  {'PASS' if monotonic else 'FAIL'}")
     return pass_delta and monotonic
 
 

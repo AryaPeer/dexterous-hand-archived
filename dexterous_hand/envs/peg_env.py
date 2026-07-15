@@ -112,6 +112,10 @@ class ShadowHandPegMjxEnv(MjxVecEnv):
         self._peg_length = (
             self.scene_config.peg_half_length * 2.0 + self.scene_config.peg_radius * 2.0
         )
+        # Insertion-depth lateral containment bound. Depends on the curriculum's
+        # current clearance, so it must be recomputed here (this method runs on
+        # every clearance change, before _batched_step/_batched_get_obs re-jit).
+        self._bore_radius = self.scene_config.peg_radius + self.scene_config.clearance
 
     def set_curriculum_params(self, clearance: float, p_pre_grasped: float) -> None:
         self._p_pre_grasped = jnp.array(float(p_pre_grasped))
@@ -273,6 +277,7 @@ class ShadowHandPegMjxEnv(MjxVecEnv):
             nm.hole_body_id,
             peg_half_length,
             peg_radius,
+            self._bore_radius,
         )
 
         # per-wall contact force magnitudes (sum over all hole walls)
@@ -392,6 +397,7 @@ class ShadowHandPegMjxEnv(MjxVecEnv):
             nm.hole_body_id,
             self.scene_config.peg_half_length,
             self.scene_config.peg_radius,
+            self._bore_radius,
         )
 
         # per-wall + total contact forces, exposed to the policy

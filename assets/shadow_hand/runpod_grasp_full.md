@@ -1,14 +1,27 @@
 # RunPod grasp full (70M)
 
 Single 5090 pod, ~62 hr, ~$61 at measured 316 fps for PPO+MJX at 768
-envs. Round-13 grasp 50M had `success_hold_steps` plateau at 5.6 due to
-adaptive LR collapse; round-14 raises `target_kl` to 0.05 to let LR stay
-near 3e-4. The gates are now **automatic** (disable with `--no-gate`):
-a 10M grip-health gate and a 50M lift-emergence gate stop the run if it
-regresses. Lift via finger-curl only emerges around ~40M (flat
-`object_height` at 5M is EXPECTED), so — unlike the old manual gate — the
-10M check does NOT require any lift or success-hold; that is deferred to
-the 50M gate.
+envs. The gates are **automatic** (disable with `--no-gate`): a 10M
+grip-health gate and a 30M lift-emergence gate stop the run if it
+regresses.
+
+**2026-07-14 — task redefined back to a real pick-up.** The grasp scene
+now has a vertical arm DOF (`slide_z`, same actuator as the peg scene)
+and `lift_target` is restored to **0.10** (it had eroded 0.1 → 0.07 →
+0.04 → 0.012 across rounds 11-13 because the old scene physically capped
+lift at ~1cm of finger curl). Success = hold the cube near 10cm for 1s;
+the episode **no longer terminates on success** — the policy is paid
+per-step `holding` to keep the cube up (Adroit/robosuite convention),
+which is also what a demo should look like. Consequences:
+- obs is now 108-dim and actions 23-dim — **all pre-slide_z checkpoints
+  are incompatible; do not resume from them.**
+- All old sanity baselines (nfc 4.92, grasping 0.985, flat object_height
+  0.4349 at 5M, ~11mm lift at 40M) are from the immobile-scene task and
+  are retired. Gate floors are first-principles collapse bars until a
+  fresh post-slide_z 5M sanity exists — **run that sanity first and
+  re-derive the floors from it.**
+- With a direct actuator gradient for lifting, lift is expected to
+  emerge far earlier than the old ~40M finger-curl estimate.
 
 ## 1. Pod
 
@@ -39,6 +52,11 @@ Pre-flight (free, CPU-only — run before paying for the GPU run):
 ```
 uv run python scripts/check_reward_gradient.py
 # expected: PEG: PASS / GRASP: PASS
+
+uv run pytest tests/ -q
+# expected: all pass (includes the slow geometry tests: peg drop-insertion
+# reachability AND grasp lift-winnability — a formed grip + slide_z must
+# lift the cube past lift_target and hold it)
 ```
 
 JAX GPU sanity:
@@ -48,7 +66,7 @@ uv run python -c "import jax; print(jax.devices())"
 # expected: [CudaDevice(id=0)]
 
 uv run python -c "import jax; x = jax.numpy.ones((4,4)); print((x @ x).sum())"
-# expected: 16.0 (no CUDNN_STATUS_NOT_INITIALIZED)
+# expected: 64.0 (no CUDNN_STATUS_NOT_INITIALIZED)
 ```
 
 If JAX still errors with `CUDNN_STATUS_NOT_INITIALIZED` despite the pin,
@@ -87,26 +105,24 @@ Detach with `Ctrl+b d`. Reattach with `tmux attach -t grasp`.
 2. Drop `--num-envs` to 512.
 3. Restart on a bigger GPU if still OOM at 512 envs.
 
-## 4. Automatic gates (10M grip-health, 50M lift-emergence)
+## 4. Automatic gates (10M grip-health, 30M lift-emergence)
 
 The run gates itself — you don't run anything. `MilestoneGateCallback`
 prints a `===== MILESTONE GATE =====` table and **exits cleanly** if a
 floor is breached. Floors (source of truth:
-`scripts/training/train_grasp.py::GRASP_GATES`):
+`scripts/training/train_grasp.py::GRASP_GATES`) are first-principles
+collapse bars; baselines are NaN until the first post-slide_z sanity:
 
-10M — grip health (lift NOT expected yet):
-- `metrics/num_finger_contacts >= 3.0`  (5M 4.92)
-- `reward/grasping >= 0.70`             (5M 0.985)
-- `reward/grasp_quality >= 0.70`        (5M 1.0)
+10M — grip health:
+- `metrics/num_finger_contacts >= 2.5`  (grip forms and stays formed)
+- `reward/grasping >= 0.60`             (grasp reward maintained)
 
-50M — lift emergence:
-- `metrics/object_height >= 0.437`  (5M 0.4349 at rest; ~11mm lift expected
-  by 40M — a flat 0.4349 means the policy never lifts)
+30M — lift emergence:
+- `metrics/object_height >= 0.445`  (mean >= ~1cm lift over the window;
+  flat 0.435 = never lifts despite the direct slide_z gradient)
 
-The old manual 10M bar `success_hold_steps >= 3.0` was WRONG: grasp has no
-success hold until it lifts (~40M), so it would have false-killed every
-healthy run. `learning_rate`/`value_loss` aren't in the env infos, so they
-are not auto-gated — watch them with the snippet in §4b.
+`learning_rate`/`value_loss` aren't in the env infos, so they are not
+auto-gated — watch them with the snippet in §4b.
 
 On a gate stop the process saves and exits — preserve and stop the pod:
 
@@ -167,8 +183,8 @@ while pgrep -f "main.py train-grasp-mjx" > /dev/null; do sleep 60; done \
 |-----------------------------------------|----------------------------------|
 | `train/std`                             | stays in [0.05, 1.1], never >1.5 |
 | `train/metrics/nan_rate`                | < 0.01                           |
-| `train/metrics/object_height`           | >= 0.448 sustained               |
-| `train/metrics/success_hold_steps`      | > 10 mean (out of 20)            |
+| `train/metrics/object_height`           | >= 0.48 sustained (real pickups) |
+| `train/metrics/success_hold_steps`      | > 12 mean (out of 25)            |
 | `train/learning_rate`                   | >= 1e-4 throughout               |
 | `train/value_loss`                      | < 100, flat or declining         |
 
@@ -196,6 +212,7 @@ uv run python main.py resume-grasp-mjx \
 `--additional-timesteps` is additional, not cumulative. Output writes
 to `runs/<run_name>_resumed/` unless `--output-dir` is set.
 
-**Do not resume from any grasp checkpoint that pre-dates round-14** —
-`norm_reward=True` and `target_kl=0.05` both flipped, so VecNormalize
-statistics from older runs would be wrong. Start round-14 from scratch.
+**Do not resume from any checkpoint that pre-dates the 2026-07-14
+slide_z change** — obs went 105→108 and actions 22→23, so old policies
+and VecNormalize statistics are structurally incompatible. (The older
+round-14 norm_reward/target_kl caveat is subsumed by this.)

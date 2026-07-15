@@ -22,8 +22,8 @@ def _grasp_kwargs(cfg: RewardConfig, table_height: float) -> dict:
         object_position=jnp.array([0.0, 0.0, 0.5]),
         object_linear_velocity=jnp.zeros(3),
         finger_contact_mask=jnp.array([True, True, True, False, False]),
-        actions=jnp.zeros(22),
-        previous_actions=jnp.zeros(22),
+        actions=jnp.zeros(23),
+        previous_actions=jnp.zeros(23),
         table_height=table_height,
         lift_target=cfg.lift_target,
         hold_velocity_threshold=cfg.hold_velocity_threshold,
@@ -83,8 +83,8 @@ class TestGraspJax:
             jnp.array([0.0, 0.0, 0.5]),
             jnp.zeros(3),
             jnp.array([True, True, True, False, False]),
-            jnp.zeros(22),
-            jnp.zeros(22),
+            jnp.zeros(23),
+            jnp.zeros(23),
         )
         assert np.isfinite(float(total))
         assert "reward/total" in info

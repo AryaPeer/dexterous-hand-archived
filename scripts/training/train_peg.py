@@ -23,31 +23,42 @@ from scripts.training._common import (
     setup_sb3_logger,
 )
 
-# Compute-saver gates. Floors are well below the 2026-06-01 5M sanity values
-# (axis_align 0.955, insertion_depth 0.060, complete 3.24, stage 2.65,
-# insertion_hold_steps 1.83) so a healthy run sails through; tripping one means
-# a genuine regression/collapse (round-16 mode: axis_align 0.07) or a stalled
-# hold. info_key, floor, 5M-baseline, why:
+# Compute-saver gates.
+#
+# NOTE (2026-06-10): the 2026-06-01 5M sanity "baselines" (insertion_depth
+# 0.060, complete 3.24, insertion_hold_steps 1.83, stage 2.65) were artifacts
+# of the lateral-blind insertion metric — any peg at table level scored
+# fraction 1.0, so those numbers measured the drop-the-peg exploit, not
+# insertion. After the containment fix in get_insertion_depth_jax, honest mean
+# insertion depth is expected to be ~0 well past 10M. The floors below are
+# therefore first-principles bars, not sanity-derived: at 10M we check grip
+# pose + progress (metrics whose semantics the fix did not change), at 30M we
+# check that real in-bore insertion EXISTS at all (a mean of exactly 0 over
+# the ~1.5M-step window means the policy never inserts — the run's bet has
+# failed). Re-derive proper floors from the first post-fix 5M sanity; the
+# baseline column is NaN until then. info_key, floor, baseline, why:
 PEG_GATES = [
     (
         10_000_000,
         [
-            ("metrics/axis_align", 0.70, 0.955, "peg held vertical (round-16 collapsed to 0.07)"),
-            ("metrics/stage", 1.5, 2.65, "task progressed past grasp-and-sit"),
-            ("metrics/insertion_depth", 0.040, 0.060, "peg reaching toward the hole (~0.53 frac)"),
+            ("metrics/axis_align", 0.70, float("nan"),
+             "peg held vertical (round-16 collapsed to 0.07)"),
+            ("metrics/stage", 1.5, float("nan"), "task progressed past grasp-and-sit"),
+            ("metrics/peg_height", 0.45, float("nan"),
+             "peg held lifted, not dropped (round-14 10M kill bar: mean >= +27mm)"),
         ],
-        "peg 10M: vertical grip + reaching insertion",
+        "peg 10M: vertical lifted grip (real insertion not expected yet)",
     ),
     (
         30_000_000,
         [
-            ("metrics/axis_align", 0.80, 0.955, "vertical grip held"),
-            ("metrics/insertion_depth", 0.050, 0.060, "depth >= ~0.66 of peg length"),
-            ("reward/complete", 1.0, 3.24, "insertion completions still firing"),
-            ("metrics/insertion_hold_steps", 2.5, 1.83,
-             "sustained hold climbing toward the 10-step success (flat ~1.8 = stalled)"),
+            ("metrics/axis_align", 0.80, float("nan"), "vertical grip held"),
+            ("metrics/insertion_depth", 0.001, float("nan"),
+             "in-bore insertion happening at all (exact 0 = never inserts)"),
+            ("metrics/insertion_hold_steps", 0.05, float("nan"),
+             "some sustained in-bore holds occurring (exact 0 = never holds depth)"),
         ],
-        "peg 30M: insertion solidifying",
+        "peg 30M: insertion exists",
     ),
 ]
 

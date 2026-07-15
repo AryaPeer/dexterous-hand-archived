@@ -21,17 +21,20 @@ class TestConfigDefaults:
 
     def test_reward_weights(self):
         w = RewardWeights()
-        assert w.reaching == 1.0
-        assert w.grasping == 1.0
-        assert w.lifting == 12.0
-        assert w.holding == 10.0
+        assert w.reaching == 0.5
+        assert w.grasping == 2.5
+        assert w.lifting == 6.0
+        assert w.holding == 6.0
         assert w.opposition == 1.0
 
     def test_reward_config(self):
         c = RewardConfig()
         assert isinstance(c.weights, RewardWeights)
-        assert c.lift_target == 0.012
-        assert c.hold_height_smoothness_k == 200.0
+        # 0.10 = real pick-up; guards against the round-11-13 erosion of the
+        # lift bar (0.1 -> 0.07 -> 0.04 -> 0.012) that redefined the task as a
+        # 12mm twitch instead of fixing the missing vertical arm DOF.
+        assert c.lift_target == 0.10
+        assert c.hold_height_smoothness_k == 50.0
         assert c.hold_velocity_smoothness_k == 20.0
         assert c.no_contact_idle_penalty == -0.08
 

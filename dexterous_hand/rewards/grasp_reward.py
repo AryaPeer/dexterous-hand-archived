@@ -85,8 +85,11 @@ def grasp_reward(
     # contact_scale attenuation past it. Letting tanh(n/2) scale lifting made
     # the policy converge to grasp-and-sit because each marginal contact above
     # 2 still bought additional reward without needing to actually lift.
+    # Linear all the way to lift_target (Apr-10 shape); capped at 1.0 — beyond
+    # the target the holding term takes over, so there is no incentive to
+    # yo-yo the cube above the cap.
     lift_gate = (n_contacts >= 2).astype(jnp.float32)
-    lifting = jnp.minimum(lift_height / lift_target, 1.5) * lift_gate
+    lifting = jnp.clip(lift_height / lift_target, 0.0, 1.0) * lift_gate
 
     obj_speed = jnp.linalg.norm(object_linear_velocity)
     # height_gate is ~0 for a grasped-but-UNLIFTED cube and ramps to ~1 as the
@@ -94,8 +97,9 @@ def grasp_reward(
     # sigmoid, centering the gate at lift_height = -28mm, so it was ~80% active
     # at zero lift and paid ~5.8/step (~1157 over a 200-step episode) to hold a
     # SITTING cube — a direct grasp-and-sit subsidy the team fought for rounds.
-    # Centering at lift_target (with a sharper hold_height_k=200) makes a sitting
-    # cube earn ~0 holding while a lifted-and-held cube still earns ~full.
+    # Centering at lift_target makes a sitting cube earn ~0 holding while a
+    # lifted-and-held cube still earns ~full (at lift_target=0.10, k=50 puts
+    # the at-rest gate at sigmoid(-5) = 0.7%).
     height_gate = _sigmoid(hold_height_k * (lift_height - lift_target))
     speed_gate = _sigmoid(hold_velocity_k * (hold_velocity_threshold - obj_speed))
     holding = height_gate * speed_gate * contact_scale

@@ -19,28 +19,33 @@ from scripts.training._common import (
     setup_sb3_logger,
 )
 
-# Compute-saver gates. Grasp lifts via finger-curl only after ~40M (flat
-# object_height at 5M is EXPECTED), so the early gate checks grip-health only
-# and the lift check is deferred to 50M. 5M sanity baselines: nfc 4.9,
-# grasping 0.985, grasp_quality 1.0, object_height 0.4349 (at rest, unlifted).
-# info_key, floor, 5M-baseline, why:
+# Compute-saver gates.
+#
+# NOTE (2026-07-14): the pre-slide_z baselines (nfc 4.92, grasping 0.985,
+# object_height 0.4349 flat at 5M, ~11mm lift by 40M) came from the scene
+# WITHOUT a vertical arm DOF, where lift was only possible via finger curl.
+# With slide_z + lift_target restored to 0.10, lift has a direct actuator
+# gradient and should emerge far earlier — but until a fresh 5M sanity exists
+# these floors are first-principles collapse bars only (baseline column NaN).
+# Re-derive real floors from the first post-slide_z sanity.
+# info_key, floor, baseline, why:
 GRASP_GATES = [
     (
         10_000_000,
         [
-            ("metrics/num_finger_contacts", 3.0, 4.92, "grip stays formed"),
-            ("reward/grasping", 0.70, 0.985, "grasp reward maintained"),
-            ("reward/grasp_quality", 0.70, 1.0, "grip quality maintained"),
+            ("metrics/num_finger_contacts", 2.5, float("nan"), "grip forms and stays formed"),
+            ("reward/grasping", 0.60, float("nan"), "grasp reward maintained"),
         ],
-        "grasp 10M: grip health (lift not expected yet)",
+        "grasp 10M: grip health",
     ),
     (
-        50_000_000,
+        30_000_000,
         [
-            ("metrics/object_height", 0.437, 0.4349,
-             "lift has emerged (>~2mm; ~11mm expected by 40M); flat 0.4349 = never lifts"),
+            ("metrics/object_height", 0.445, float("nan"),
+             "lift emerged (mean >= ~1cm over the window; flat 0.435 = never lifts "
+             "despite the slide_z gradient — the run's bet has failed)"),
         ],
-        "grasp 50M: lift emergence",
+        "grasp 30M: lift emergence",
     ),
 ]
 

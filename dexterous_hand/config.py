@@ -25,10 +25,14 @@ class SceneConfig:
 
 @dataclass
 class RewardWeights:
-    reaching: float = 1.0
-    grasping: float = 1.0
-    lifting: float = 12.0
-    holding: float = 10.0
+    # Proportions restored to the Apr-10 (215cfa0) design that produced real
+    # pickups: reaching is a hint, grasping is meaningful, lifting dominates,
+    # holding pays comparably to lifting so the policy holds at height instead
+    # of oscillating at the lift cap.
+    reaching: float = 0.5
+    grasping: float = 2.5
+    lifting: float = 6.0
+    holding: float = 6.0
     drop: float = 1.0
     action_penalty: float = 1.0
     success: float = 1.0
@@ -40,17 +44,26 @@ class RewardWeights:
 class RewardConfig:
     weights: RewardWeights = field(default_factory=RewardWeights)
     reach_tanh_k: float = 5.0
-    lift_target: float = 0.012
+    # 0.10 = a real, visible pick-up (the Apr-10 value). This eroded to 0.012
+    # over rounds 11-13 because the scene had no vertical arm DOF and finger
+    # curl capped physical lift at ~1cm — the bar was lowered to match a broken
+    # scene instead of fixing the scene. With slide_z in the grasp scene
+    # (scene_builder.py) a 10cm lift is mechanically direct, so the task is
+    # again "pick the cube up", not "twitch it 12mm".
+    lift_target: float = 0.10
     hold_velocity_threshold: float = 0.05
-    # Sharpness of the holding height-gate around lift_target. Raised 50->200 so
-    # the gate is ~0 below lift_target (no reward for holding an UNLIFTED cube)
-    # and ~1 once lifted — see the holding term in grasp_reward.py.
-    hold_height_smoothness_k: float = 200.0
+    # Sharpness of the holding height-gate around lift_target. With
+    # lift_target=0.10, k=50 keeps the gate ~0 at zero lift (sigmoid(-5) =
+    # 0.7% — no grasp-and-sit subsidy) while giving a smooth gradient over the
+    # last few cm of the lift. (k=200 was needed when lift_target was 0.012;
+    # at 0.10 it would make the gate a step function.)
+    hold_height_smoothness_k: float = 50.0
     hold_velocity_smoothness_k: float = 20.0
     fingertip_weights: tuple[float, float, float, float, float] = (2.5, 1.0, 1.0, 1.0, 1.0)
     drop_penalty: float = -20.0
     success_bonus: float = 250.0
-    success_hold_steps: int = 20
+    # 25 steps = 1s of continuous at-height hold before the one-shot bonus.
+    success_hold_steps: int = 25
     no_contact_idle_penalty: float = -0.08
     idle_grace_steps: int = 3
 
@@ -130,21 +143,22 @@ class PegSceneConfig:
     hole_depth: float = 0.06
     # Lift the hole body so its entrance sits this far above the table top,
     # forming a guide tube. The hand's middle/ring KNUCKLES bottom out on the
-    # table (penetrating ~1mm) and cap slide_z descent at ~-0.0814 regardless
-    # of actuator force, leaving the peg tip ~7-10mm above the table top. The
-    # success criterion needs the tip ~53mm below the hole entrance, so the
-    # required descent is set by the ENTRANCE elevation, not the actuator.
+    # table and cap slide_z descent, leaving the peg tip ~8mm above the table
+    # top — but with the entrance elevated the hand never needs to reach table
+    # level: it releases the peg over the bore and gravity finishes insertion.
     #
-    # Measured by CPU mujoco grip-descend; the invariant is now guarded by
-    # tests/test_geometry.py::test_peg_insertion_physically_reachable, which
-    # asserts achievable insertion >= success_threshold + 0.05 at this elevation:
-    #   hole_top=0.06 -> achievable insertion fraction 0.68 (BELOW 0.70 -> task
-    #                    was geometrically unwinnable; matches the round-16 FAIL)
-    #   hole_top=0.07 -> 0.81
-    #   hole_top=0.08 -> 0.94  (+0.24 margin over success_threshold=0.70)
-    # hole_depth does not affect the ceiling here (the knuckle cap binds before
-    # the hole floor). 0.08 gives a healthy margin; do NOT set success_threshold
-    # above the measured achievable fraction at the chosen elevation.
+    # True in-tube geometry (CPU mujoco drop test, guarded by
+    # tests/test_geometry.py::test_peg_drop_insertion_reaches_success_depth):
+    # a peg settled on the hole_bottom plate measures insertion fraction
+    # 0.757 (depth 0.0575 = hole_depth - plate half-thickness), a +0.057
+    # margin over success_threshold=0.70 (~4.3mm). The ceiling is set by
+    # hole_depth, NOT by this elevation; do NOT set success_threshold above
+    # the in-tube ceiling (test guards this).
+    #
+    # NOTE: an earlier comment here claimed "achievable 0.94 / +0.24 margin" —
+    # that was an artifact of the pre-2026-06-10 insertion metric, which had
+    # no lateral containment and measured open-air descent NEXT to the tube
+    # (see get_insertion_depth_jax). Depth now only counts inside the bore.
     # Matches robosuite NutAssembly / TwoArmPegInHole convention of placing
     # the receptacle above the workspace surface.
     hole_top_above_table: float = 0.08
@@ -218,9 +232,12 @@ class MjxPegTrainConfig:
     # Milestone compute-saver. When True the run stops early if the task
     # metrics regress/collapse or a progress metric goes flat at a milestone
     # (10M and 30M for peg) — see the gate list in scripts/training/train_peg.py
-    # and MilestoneGateCallback in _common.py. Bars are derived from the
-    # 2026-06-01 5M sanity, NOT the older doc bars. A ~500k checkpoint always
-    # exists, so a stop is resumable. CLI: --no-gate.
+    # and MilestoneGateCallback in _common.py. The 2026-06-01 5M sanity bars
+    # were invalidated by the insertion-metric containment fix (the old metric
+    # scored never-inserted pegs as inserted); current floors are
+    # first-principles collapse bars — re-derive from the first post-fix
+    # sanity. A ~500k checkpoint always exists, so a stop is resumable.
+    # CLI: --no-gate.
     gate_enabled: bool = True
     learning_rate: float = 3e-4
     batch_size: int = 4096
