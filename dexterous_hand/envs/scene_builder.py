@@ -196,6 +196,15 @@ def build_scene(
     spec.option.impratio = 1.0
     spec.option.iterations = config.solver_iterations
     spec.option.ls_iterations = config.ls_iterations
+    # implicitfast integrates joint damping implicitly — the standard MJX
+    # hand-task integrator (MuJoCo Playground uses it for LEAP/Panda), and
+    # what keeps the heavily-damped Shadow joints stable at dt=0.005.
+    spec.option.integrator = mujoco.mjtIntegrator.mjINT_IMPLICITFAST
+    # MJX contact-culling numerics (ignored by CPU MuJoCo) — see config.
+    if config.mjx_max_geom_pairs is not None:
+        spec.add_numeric(name="max_geom_pairs", data=[float(config.mjx_max_geom_pairs)])
+    if config.mjx_max_contact_points is not None:
+        spec.add_numeric(name="max_contact_points", data=[float(config.mjx_max_contact_points)])
     spec.stat.extent = 1.0
     spec.stat.center = [0.0, 0.0, config.table_height]
 
@@ -316,6 +325,12 @@ def build_scene(
     child_spec = mujoco.MjSpec.from_file(hand_xml)
     spec.attach(child_spec, site=mount_site, prefix="")
     spec.body("rh_forearm").quat = [0.0, 1.0, 0.0, 0.0]
+
+    # Cap convex-hull vertices for the hand's mesh collision geoms: hull size
+    # is a first-order MJX collision cost (default 64; 32 is ample for
+    # phalanx-scale hulls).
+    for mesh in spec.meshes:
+        mesh.maxhullvert = 32
 
     for body_name, site_name in zip(FINGERTIP_BODIES, FINGERTIP_SITE_NAMES, strict=True):
         body = spec.body(body_name)

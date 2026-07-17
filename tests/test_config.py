@@ -16,8 +16,9 @@ class TestConfigDefaults:
         assert c.mount_x == -0.10
         assert c.mount_y == 0.0
         assert c.mount_height == 0.78
-        assert c.sim_timestep == 0.002
-        assert c.frame_skip == 20
+        # 0.005 x 8 = 25 Hz control (Playground-style MJX physics config)
+        assert c.sim_timestep == 0.005
+        assert c.frame_skip == 8
         assert c.solver_iterations == 8
         assert c.ls_iterations == 8
 

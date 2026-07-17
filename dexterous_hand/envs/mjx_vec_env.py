@@ -250,19 +250,30 @@ class MjxVecEnv(VecEnv):
         truncated_np = np.asarray(truncated_only)
         rewards_np = np.asarray(rewards, dtype=np.float64)
 
-        reward_info_np: dict[str, np.ndarray] = {}
+        # Host-side info cost dominates the python loop at large num_envs
+        # (num_envs dicts x ~25 numpy scalars per control step), so the
+        # reward/metric streams are reduced to batch MEANS on device and
+        # attached to infos[0] only — the logging/gate callbacks read them
+        # from whichever info carries them, and a mean-of-per-step-means
+        # equals the mean over envs x steps. Only `is_success` stays per-env
+        # (SB3's success-rate tracking is per-episode).
+        is_success_np: np.ndarray | None = None
+        agg_info: dict[str, float] = {}
         if reward_info is not None:
-            for k, v in reward_info.items():
-                arr = np.asarray(v)
-                if np.issubdtype(arr.dtype, np.floating):
-                    arr = np.nan_to_num(arr, nan=0.0, posinf=0.0, neginf=0.0)
-                reward_info_np[k] = arr
+            per_env = reward_info.pop("is_success", None)
+            if per_env is not None:
+                is_success_np = np.asarray(per_env)
+            keys = sorted(reward_info.keys())
+            if keys:
+                means = np.asarray(jnp.stack([jnp.mean(reward_info[k]) for k in keys]))
+                means = np.nan_to_num(means, nan=0.0, posinf=0.0, neginf=0.0)
+                agg_info = {k: float(m) for k, m in zip(keys, means, strict=True)}
 
         infos: list[dict[str, Any]] = []
         for i in range(self._num_envs):
             info: dict[str, Any] = {}
-            for k, v in reward_info_np.items():
-                info[k] = v[i]
+            if is_success_np is not None:
+                info["is_success"] = float(is_success_np[i])
             if dones_np[i]:
                 info["terminal_observation"] = obs_np[i].copy()
                 if truncated_np[i]:
@@ -270,6 +281,7 @@ class MjxVecEnv(VecEnv):
                 if reset_obs_np is not None:
                     obs_np[i] = reset_obs_np[i]
             infos.append(info)
+        infos[0].update(agg_info)
 
         self._pending_obs = obs_np
         self._pending_rewards = rewards_np

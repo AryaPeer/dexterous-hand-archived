@@ -213,6 +213,7 @@ def test_compiled_scene_contact_options():
         assert model.opt.iterations == cfg.solver_iterations
         assert model.opt.ls_iterations == cfg.ls_iterations
         assert model.opt.timestep == cfg.sim_timestep
+        assert model.opt.integrator == mujoco.mjtIntegrator.mjINT_IMPLICITFAST
 
 
 def test_wall_touch_sensors_alive():

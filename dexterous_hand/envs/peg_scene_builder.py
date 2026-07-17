@@ -55,6 +55,13 @@ def build_peg_scene(
     spec.option.impratio = 1.0
     spec.option.iterations = config.solver_iterations
     spec.option.ls_iterations = config.ls_iterations
+    # implicitfast — see the identical block in scene_builder.py.
+    spec.option.integrator = mujoco.mjtIntegrator.mjINT_IMPLICITFAST
+    # MJX contact-culling numerics (ignored by CPU MuJoCo) — see config.
+    if config.mjx_max_geom_pairs is not None:
+        spec.add_numeric(name="max_geom_pairs", data=[float(config.mjx_max_geom_pairs)])
+    if config.mjx_max_contact_points is not None:
+        spec.add_numeric(name="max_contact_points", data=[float(config.mjx_max_contact_points)])
     spec.stat.extent = 1.0
     spec.stat.center = [0.0, 0.0, config.table_height]
 
@@ -180,6 +187,11 @@ def build_peg_scene(
     for geom in spec.geoms:
         if geom.contype == 1 and geom.conaffinity == 0:
             geom.conaffinity = 2
+
+    # Cap convex-hull vertices for the hand's mesh collision geoms — see the
+    # identical block in scene_builder.py.
+    for mesh in spec.meshes:
+        mesh.maxhullvert = 32
 
     for body_name, site_name in zip(FINGERTIP_BODIES, FINGERTIP_SITE_NAMES, strict=True):
         body = spec.body(body_name)

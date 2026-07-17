@@ -19,8 +19,16 @@ class SceneConfig:
     object_mass: float = 0.1
     object_friction: tuple[float, float, float] = (1.0, 0.005, 0.001)
     action_smoothing_alpha: float = 0.2
-    sim_timestep: float = 0.002
-    frame_skip: int = 20
+    # 0.005 x 8 substeps = 25 Hz control, the MuJoCo Playground recipe for
+    # MJX hand tasks (Panda sim dt 0.005, LEAP 0.01, all with implicitfast —
+    # set in the builders). Every substep pays the full Newton solve on GPU,
+    # so halving the substep count is a direct ~2.5x throughput win over
+    # 0.002 x 20. The cube's form-closure grip is stable at this dt; the peg
+    # task is NOT (see PegSceneConfig.sim_timestep) and keeps 0.002. Re-run
+    # the CPU test suite, check_reward_gradient, the renders, and
+    # scripts/mjx_parity_check.py after any change here.
+    sim_timestep: float = 0.005
+    frame_skip: int = 8
     # Newton solver iteration caps, compiled into the scene by the builder.
     # MuJoCo's defaults (100/50) are sized for CPU, where Newton early-exits
     # on tolerance; MJX pays the configured worst case per substep, and
@@ -28,6 +36,15 @@ class SceneConfig:
     # scripts/mjx_parity_check.py after any change here.
     solver_iterations: int = 8
     ls_iterations: int = 8
+    # MJX contact culling — Playground-style custom numerics read by
+    # mujoco-mjx's collision driver ("max_geom_pairs"/"max_contact_points").
+    # None = off; CPU MuJoCo ignores the numerics either way. Set on the pod
+    # AFTER measuring max ncon over the parity trajectories + a random-policy
+    # rollout (~2x the observed max) and re-running mjx_parity_check with the
+    # MJX backend: culling too low silently drops real contacts, which the
+    # parity bars catch as grip failure.
+    mjx_max_geom_pairs: int | None = None
+    mjx_max_contact_points: int | None = None
 
 
 @dataclass
@@ -223,11 +240,21 @@ class PegSceneConfig:
     peg_mass: float = 0.02
     peg_friction: tuple[float, float, float] = (1.0, 0.005, 0.001)
     action_smoothing_alpha: float = 0.2
+    # 0.002 x 20 = 25 Hz control. The peg task CANNOT run the grasp task's
+    # dt=0.005: the precision pinch on the smooth capsule loses orientation
+    # at dt >= 0.004 (measured: peg tilt ratchets 20deg -> 55deg during
+    # transport, independent of integrator, contact solref, and how gently
+    # the hand moves), and the toppled peg never enters the bore. The 7cm
+    # cube's form-closure grip has no such sensitivity, so SceneConfig keeps
+    # dt=0.005. Re-run the peg proofs + renders after any change here.
     sim_timestep: float = 0.002
     frame_skip: int = 20
     # Newton solver iteration caps — see SceneConfig.solver_iterations.
     solver_iterations: int = 8
     ls_iterations: int = 8
+    # MJX contact culling — see SceneConfig.mjx_max_geom_pairs.
+    mjx_max_geom_pairs: int | None = None
+    mjx_max_contact_points: int | None = None
 
 
 @dataclass
