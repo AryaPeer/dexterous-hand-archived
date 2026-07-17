@@ -1,14 +1,4 @@
-"""
-Diagnose a grasp training trajectory from its progress.csv.
-
-Usage:
-    uv run python scripts/diagnose_grasp_regression.py <path/to/progress.csv>
-
-Prints 10 evenly-spaced windows of task metrics, reward components, and
-policy health (value_loss, explained_variance, etc.) — the bundle that
-caught the round-12 value-function divergence and the round-13 adaptive-LR
-collapse. Run this on any future grasp run that ends below bar.
-"""
+"""Diagnose a grasp training trajectory from its progress.csv."""
 import csv
 import sys
 

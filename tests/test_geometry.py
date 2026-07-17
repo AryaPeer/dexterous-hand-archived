@@ -1,22 +1,4 @@
-"""Geometry invariants for the peg and grasp tasks.
-
-These pin the physical-reachability relationships the project repeatedly broke:
-
-- round-16 FAIL: the peg success threshold sat above what the hand could
-  mechanically achieve (see memory note `peg_insertion_geometric_ceiling`);
-- 2026-06-10 audit: the insertion-depth metric had no lateral containment, so
-  with the entrance raised 8cm above the table ANY peg at table level scored
-  insertion_fraction 1.0 — a peg lying on the table out-scored a fully
-  inserted one (0.757) and "drop the peg" became a free terminal success
-  (see memory note `peg_false_insertion_success`). The earlier version of this
-  file validated that broken metric: its grip-descend ran ~10cm laterally from
-  the hole, so its "0.94 achievable" was open-air descent next to the tube.
-- 2026-07-14: grasp `lift_target` had eroded 0.1 -> 0.012 across rounds 11-13
-  because the scene had no vertical arm DOF (finger curl caps lift at ~1cm).
-  slide_z was added and lift_target restored to 0.10; the grasp test below
-  guards that the target stays physically reachable from a formed grip
-  (measured: 51% of sampled grip poses hold a 20cm+ lift; best ~0.235m).
-"""
+"""Geometry invariants for the peg and grasp tasks."""
 import pytest
 
 mujoco = pytest.importorskip("mujoco")
@@ -68,11 +50,7 @@ def _set_peg_pose(model, data, pos, quat) -> None:
 
 
 def test_success_depth_fits_in_tube():
-    """Cheap necessary condition: the success depth must be physically reachable
-    INSIDE the tube. The binding bound is whichever the descending tip hits
-    first — the top surface of the hole_bottom plate, or the solid table (there
-    is no bore through it). Read both from the compiled model, not from config
-    arithmetic, so a scene-builder change can't silently invalidate this."""
+    """Cheap necessary condition: the success depth must be physically reachable"""
     cfg = PegSceneConfig()
     rcfg = PegRewardConfig()
     model, _, _ = build_peg_scene(cfg)
@@ -95,10 +73,7 @@ def test_success_depth_fits_in_tube():
 
 
 def test_insertion_depth_requires_lateral_containment():
-    """Regression test for the 2026-06-10 false-success bug: a peg at table
-    level OUTSIDE the bore must measure zero insertion depth, while a peg
-    inside the tube must clear the success depth. Pure kinematics (mj_forward),
-    no stepping."""
+    """A peg at table level next to the tube must measure zero insertion depth."""
     cfg = PegSceneConfig()
     rcfg = PegRewardConfig()
     model, data, nm = build_peg_scene(cfg)
@@ -115,12 +90,6 @@ def test_insertion_depth_requires_lateral_containment():
         ("upright in table corner", [0.20, 0.10, spawn_z], upright),
         ("lying flat 10cm out", [0.10, 0.0, cfg.table_height + cfg.peg_radius + 0.001], lying),
     ]
-    # Round-17 exploit poses: a table-lying peg with one END slid into the
-    # slot under the floating tube. The lower end sits ON the hole axis, so
-    # the lateral gate passes; only the AXIAL window (lower-end depth 0.072 >
-    # hole_depth 0.06) zeroes it. Kinematic pose — the pedestal now blocks it
-    # physically, but the metric must be honest on its own (pre-axial-window
-    # these measured depth 0.080, fraction 1.0, with zero wall contact).
     for deg in (3.0, 8.0):
         theta = np.deg2rad(90.0 - deg)
         axis = np.array([np.sin(theta), 0.0, np.cos(theta)])
@@ -160,11 +129,7 @@ def test_insertion_depth_requires_lateral_containment():
 
 
 def test_under_tube_slot_is_blocked():
-    """Round-17: the tube floats (entrance 8cm up, walls only 6cm deep), so a
-    pedestal geom must fill table-top -> plate-underside; otherwise a lying peg
-    (1.6cm dia) fits in the ~1.75cm slot and gets lost under the receptacle.
-    Read the bounds from the compiled model so builder changes can't silently
-    reopen the gap."""
+    """The under-tube slot must be blocked so a table-lying peg cannot score."""
     cfg = PegSceneConfig()
     model, _, _ = build_peg_scene(cfg)
 
@@ -197,12 +162,7 @@ def test_under_tube_slot_is_blocked():
 
 
 def test_compiled_scene_contact_options():
-    """MjSpec.attach() does NOT merge the hand XML's <option cone="elliptic"
-    impratio="10"/> — until 2026-07-14 the compiled scenes silently ran MuJoCo
-    defaults (pyramidal, impratio=1) while every grip proof was measured under
-    them. The builders now pin that choice explicitly; this guards the pinned
-    contact model and the MJX solver iteration caps against another silent
-    flip (e.g. an attach()-semantics change or a builder refactor)."""
+    """MjSpec.attach() does not merge the hand XML's option block; the builders pin it."""
     for build, cfg in (
         (build_scene, SceneConfig()),
         (build_peg_scene, PegSceneConfig()),
@@ -217,13 +177,7 @@ def test_compiled_scene_contact_options():
 
 
 def test_wall_touch_sensors_alive():
-    """MuJoCo touch sensors only sum contacts whose point lies INSIDE the site
-    volume. The wall sites used to be 2.5mm spheres at the centre of 6cm-tall
-    walls: a peg physically pressed into a wall registered 0.168N in the
-    contact list and 0.0 on every wall sensor, so the force penalty could
-    never fire on wall jams and 4 of the 6 contact-force obs dims were
-    constants. Press the peg into each wall (and onto the bottom plate) and
-    require the matching sensor to read the contact."""
+    """MuJoCo touch sensors only sum contacts whose point lies INSIDE the site"""
     cfg = PegSceneConfig()
     model, data, nm = build_peg_scene(cfg)
     cr = cfg.peg_radius + cfg.clearance
@@ -264,13 +218,7 @@ def test_wall_touch_sensors_alive():
 
 @pytest.mark.slow
 def test_peg_drop_insertion_reaches_success_depth():
-    """Sufficient condition under real physics: a peg released just above the
-    hole entrance must fall into the tube, settle on the bottom, and HOLD an
-    insertion fraction >= success_threshold (with margin). This is the honest
-    reachability bound: with the entrance hole_top_above_table above the table,
-    the hand never needs to descend to table level (the round-16 knuckle-cap
-    constraint) — it needs to release the peg over the bore. The measured
-    in-tube ceiling is ~0.757; success_threshold=0.70 leaves ~+4mm."""
+    """Sufficient condition under real physics: a peg released just above the"""
     cfg = PegSceneConfig()
     rcfg = PegRewardConfig()
     model, data, nm = build_peg_scene(cfg)
@@ -290,8 +238,6 @@ def test_peg_drop_insertion_reaches_success_depth():
         f"hole_top_above_table, or lower success_threshold."
     )
 
-    # success additionally requires holding the depth for peg_hold_steps; the
-    # settled pose must be stable, not a bounce artifact
     fracs = []
     for _ in range(rcfg.peg_hold_steps * 5):
         mujoco.mj_step(model, data)
@@ -304,17 +250,7 @@ def test_peg_drop_insertion_reaches_success_depth():
 
 @pytest.mark.slow
 def test_peg_transport_release_insertion():
-    """Full winning-trajectory proof under real physics: from the env's
-    pre-grasped reset (GRIP_BIAS + peg at grasp_site + 5-step settle), raise
-    the peg, servo it over the bore, ENGAGE the tip ~2cm into the bore, then
-    release — the peg must slide to the bottom (fraction 0.757) and hold
-    above success_threshold. Guards the 2026-07-14 endgame redesign:
-    - releasing above the entrance topples the peg (~6 deg self-alignment
-      cone at 4mm clearance), so the reward's place target is the ENGAGED
-      pose — this test breaks if that geometry regresses;
-    - peg<->bore friction pairs (mu=0.2): at the default mu=1.0 the released
-      peg two-point-wedged at fraction ~0.55 and never reached success depth.
-    Keep the trajectory in sync with scripts/render_peg_transport.py."""
+    """Full winning-trajectory proof under real physics: from the env's"""
     import numpy as np
 
     from dexterous_hand.envs.scene_builder import (
@@ -393,12 +329,6 @@ def test_peg_transport_release_insertion():
     z_cmd += 0.06
     do_steps(25, open_fingers=True)
 
-    # With hand<->wall collision enabled, the finger proximal links rest on
-    # the tube rim during engagement (capping the tip at ~11mm inside the
-    # bore) and the released peg enters ~15deg tilted, self-feeding to the
-    # bottom under gravity at mu=0.2 over ~3s (measured: 0.638 at retract ->
-    # 0.757 converged after ~75 control steps). Give it that settle window —
-    # a policy has 20s per episode.
     do_steps(75, open_fingers=True)
 
     frac = _measure_depth(cfg, model, data, nm) / peg_len
@@ -419,11 +349,6 @@ def test_peg_transport_release_insertion():
 
 # --- grasp task -------------------------------------------------------------
 
-# A grip seed measured to hold the cube through a 20cm+ slide_z lift (from a
-# 432-combo CPU sweep, 2026-07-14: 222/432 combos held final lift > 10cm; this
-# one held 0.235m with contact on every one of the last 40 steps). It is a
-# REPRESENTATIVE reachable grip, not an optimum — if this regresses, the task
-# geometry (cube size / mount / slide_z / friction) broke, not the policy.
 CUBE_GRIP_SEED = {
     "sx": 0.115, "sy": -0.017, "z0": -0.02,
     "j3": 1.0, "j12": 0.5, "thj5": 0.5, "th1": 0.7, "squeeze": 0.4,
@@ -463,12 +388,7 @@ def _cube_grip_ctrl(model, p: dict, squeeze: float, z: float) -> np.ndarray:
 
 @pytest.mark.slow
 def test_grasp_lift_reaches_target_height():
-    """Sufficient condition under real physics: from a formed grip around the
-    cube, raising slide_z must lift the cube past lift_target (with margin)
-    and HOLD it there with hand contact. Guards the 2026-07-14 winnability
-    restoration: without slide_z this ceiling was ~1cm and lift_target=0.10
-    would be unreachable (the round-11-13 failure mode, hidden then by
-    lowering the bar to 0.012 instead of fixing the scene)."""
+    """Sufficient condition under real physics: from a formed grip around the"""
     scfg = SceneConfig()
     rcfg = RewardConfig()
     model, data, nm = build_scene(scfg)

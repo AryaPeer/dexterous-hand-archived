@@ -1,19 +1,27 @@
 from dataclasses import dataclass, field
-import math
 
 import mujoco
 
 from dexterous_hand.config import PegSceneConfig
-from dexterous_hand.envs.scene_builder import (
-    ASSETS_DIR,
-    FINGER_BODY_PREFIXES,
-    FINGER_TOUCH_SITE_NAMES,
-    FINGERTIP_BODIES,
-    FINGERTIP_OFFSETS,
-    FINGERTIP_SITE_NAMES,
+from dexterous_hand.envs._scene_common import (
     SensorMap,
+    add_fingertip_sites_and_sensors,
+    add_hand_slider,
+    add_workspace,
+    attach_hand,
+    init_spec_options,
+    resolve_hand_names,
 )
-from dexterous_hand.utils.mujoco_helpers import get_joint_qpos_qvel_range
+
+PEG_SLIDE_Z_RANGE: tuple[float, float] = (-0.10, 0.15)
+
+WALL_SENSOR_NAMES = [
+    "hole_wall_px",
+    "hole_wall_nx",
+    "hole_wall_py",
+    "hole_wall_ny",
+    "hole_bottom",
+]
 
 
 @dataclass
@@ -45,193 +53,16 @@ def build_peg_scene(
         config = PegSceneConfig()
 
     spec = mujoco.MjSpec()
-    spec.option.timestep = config.sim_timestep
-    spec.option.gravity = [0.0, 0.0, -9.81]
-    # Contact model + solver caps pinned explicitly — MjSpec.attach() drops the
-    # hand XML's <option> element; see the identical block in scene_builder.py
-    # for the full rationale. Guarded by
-    # tests/test_geometry.py::test_compiled_scene_contact_options.
-    spec.option.cone = mujoco.mjtCone.mjCONE_PYRAMIDAL
-    spec.option.impratio = 1.0
-    spec.option.iterations = config.solver_iterations
-    spec.option.ls_iterations = config.ls_iterations
-    # implicitfast — see the identical block in scene_builder.py.
-    spec.option.integrator = mujoco.mjtIntegrator.mjINT_IMPLICITFAST
-    # MJX contact-culling numerics (ignored by CPU MuJoCo) — see config.
-    if config.mjx_max_geom_pairs is not None:
-        spec.add_numeric(name="max_geom_pairs", data=[float(config.mjx_max_geom_pairs)])
-    if config.mjx_max_contact_points is not None:
-        spec.add_numeric(name="max_contact_points", data=[float(config.mjx_max_contact_points)])
-    spec.stat.extent = 1.0
-    spec.stat.center = [0.0, 0.0, config.table_height]
-
-    spec.worldbody.add_geom(
-        name="floor",
-        type=mujoco.mjtGeom.mjGEOM_PLANE,
-        size=[1.0, 1.0, 0.01],
-        rgba=[0.3, 0.3, 0.3, 1.0],
-        conaffinity=1,
-        condim=3,
+    init_spec_options(spec, config)
+    add_workspace(spec, config)
+    mount_site = add_hand_slider(
+        spec, config, slide_z_range=PEG_SLIDE_Z_RANGE, xy_forcerange=15.0
     )
-
-    table_half_h = 0.02
-    table_body = spec.worldbody.add_body(
-        name="table",
-        pos=[0.0, 0.0, config.table_height - table_half_h],
-    )
-    table_body.add_geom(
-        name="table_geom",
-        type=mujoco.mjtGeom.mjGEOM_BOX,
-        size=[config.table_half_size, config.table_half_size, table_half_h],
-        rgba=[0.5, 0.35, 0.2, 1.0],
-        conaffinity=1,
-        condim=3,
-    )
-
-    spec.worldbody.add_light(
-        name="top_light",
-        pos=[0.0, 0.0, 1.5],
-        dir=[0.0, 0.0, -1.0],
-        diffuse=[0.8, 0.8, 0.8],
-        specular=[0.3, 0.3, 0.3],
-    )
-    spec.worldbody.add_camera(
-        name="track_cam",
-        pos=[0.8, -0.8, 0.8],
-        xyaxes=[0.707, 0.707, 0.0, -0.354, 0.354, 0.866],
-    )
-
-    slider = spec.worldbody.add_body(
-        name="hand_slider",
-        pos=[config.mount_x, config.mount_y, config.mount_height],
-    )
-    slider.add_joint(
-        name="slide_x",
-        type=mujoco.mjtJoint.mjJNT_SLIDE,
-        axis=[1, 0, 0],
-        range=[-0.15, 0.15],
-    )
-    slider.add_joint(
-        name="slide_y",
-        type=mujoco.mjtJoint.mjJNT_SLIDE,
-        axis=[0, 1, 0],
-        range=[-0.15, 0.15],
-    )
-    slider.add_joint(
-        name="slide_z",
-        type=mujoco.mjtJoint.mjJNT_SLIDE,
-        axis=[0, 0, 1],
-        range=[-0.10, 0.15],
-    )
-
-    mount = slider.add_body(
-        name="hand_mount",
-        euler=[math.pi, 0.0, 0.0],
-    )
-    mount_site = mount.add_site(name="hand_attach", pos=[0.0, 0.0, 0.0])
-
-    spec.add_actuator(
-        name="slide_x_act",
-        target="slide_x",
-        trntype=mujoco.mjtTrn.mjTRN_JOINT,
-        gaintype=mujoco.mjtGain.mjGAIN_FIXED,
-        biastype=mujoco.mjtBias.mjBIAS_AFFINE,
-        gainprm=[100, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-        biasprm=[0, -100, -10, 0, 0, 0, 0, 0, 0, 0],
-        ctrlrange=[-0.15, 0.15],
-        forcerange=[-15, 15],
-    )
-    spec.add_actuator(
-        name="slide_y_act",
-        target="slide_y",
-        trntype=mujoco.mjtTrn.mjTRN_JOINT,
-        gaintype=mujoco.mjtGain.mjGAIN_FIXED,
-        biastype=mujoco.mjtBias.mjBIAS_AFFINE,
-        gainprm=[100, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-        biasprm=[0, -100, -10, 0, 0, 0, 0, 0, 0, 0],
-        ctrlrange=[-0.15, 0.15],
-        forcerange=[-15, 15],
-    )
-    # slide_z fights gravity on the entire hand (~4 kg). The slide_x/y actuator
-    # gains (kp=100) leave the hand sagging to its lower bound under load. Use
-    # kp=8000 + matching damping + 250 N force range to hold position with
-    # sub-cm sag while still letting the policy command lifts up to 15cm.
-    spec.add_actuator(
-        name="slide_z_act",
-        target="slide_z",
-        trntype=mujoco.mjtTrn.mjTRN_JOINT,
-        gaintype=mujoco.mjtGain.mjGAIN_FIXED,
-        biastype=mujoco.mjtBias.mjBIAS_AFFINE,
-        gainprm=[8000, 0, 0, 0, 0, 0, 0, 0, 0, 0],
-        biasprm=[0, -8000, -250, 0, 0, 0, 0, 0, 0, 0],
-        ctrlrange=[-0.10, 0.15],
-        forcerange=[-250, 250],
-    )
-
-    hand_xml = str(ASSETS_DIR / "right_hand.xml")
-    child_spec = mujoco.MjSpec.from_file(hand_xml)
-    spec.attach(child_spec, site=mount_site, prefix="")
-    spec.body("rh_forearm").quat = [0.0, 1.0, 0.0, 0.0]
-
-    # Hand<->wall collision. The hand XML's collision geoms are contype=1,
-    # conaffinity=0 (they collide with whatever has bit 0 in conaffinity:
-    # floor, table, peg — but never with each other). Adding bit 1 to their
-    # conaffinity makes the hole walls (contype=2) collide with them, which
-    # physically enforces the endgame this scene is designed around: fingers
-    # cannot follow a gripped peg into the bore, so the only way to reach
-    # success depth is to release the peg over the entrance. Without this,
-    # the reward-optimal policy keeps gripping with fingers ghosting through
-    # the walls and stacks grasp/lift annuities on top of `complete`.
-    # Hand<->hand stays off (no hand geom has contype bit 1) and
-    # hand<->table/floor/peg are unchanged.
-    for geom in spec.geoms:
-        if geom.contype == 1 and geom.conaffinity == 0:
-            geom.conaffinity = 2
-
-    # Cap convex-hull vertices for the hand's mesh collision geoms — see the
-    # identical block in scene_builder.py.
-    for mesh in spec.meshes:
-        mesh.maxhullvert = 32
-
-    for body_name, site_name in zip(FINGERTIP_BODIES, FINGERTIP_SITE_NAMES, strict=True):
-        body = spec.body(body_name)
-        offset = FINGERTIP_OFFSETS[body_name]
-        body.add_site(
-            name=site_name,
-            pos=offset,
-            size=[0.005],
-            rgba=[1.0, 0.0, 0.0, 1.0],
-        )
-
-    # touch sensor sites: spheres co-located with the fingertip
-    for body_name, touch_site in zip(FINGERTIP_BODIES, FINGER_TOUCH_SITE_NAMES, strict=True):
-        body = spec.body(body_name)
-        offset = FINGERTIP_OFFSETS[body_name]
-        body.add_site(
-            name=touch_site,
-            pos=offset,
-            size=[0.012],
-            type=mujoco.mjtGeom.mjGEOM_SPHERE,
-            group=4,
-        )
-
-    for touch_site in FINGER_TOUCH_SITE_NAMES:
-        spec.add_sensor(
-            name=f"sensor_{touch_site}",
-            type=mujoco.mjtSensor.mjSENS_TOUCH,
-            objtype=mujoco.mjtObj.mjOBJ_SITE,
-            objname=touch_site,
-        )
+    attach_hand(spec, mount_site, collide_with_walls=True)
+    add_fingertip_sites_and_sensors(spec)
 
     # per-wall touch sensors so the reward can read individual hole-wall forces
-    wall_sensor_names = [
-        "hole_wall_px",
-        "hole_wall_nx",
-        "hole_wall_py",
-        "hole_wall_ny",
-        "hole_bottom",
-    ]
-    for wall_name in wall_sensor_names:
+    for wall_name in WALL_SENSOR_NAMES:
         spec.add_sensor(
             name=f"sensor_force_{wall_name}",
             type=mujoco.mjtSensor.mjSENS_TOUCH,
@@ -239,8 +70,6 @@ def build_peg_scene(
             objname=f"site_{wall_name}",
         )
 
-    # peg + hole walls live on disjoint contype/conaffinity bits so they only
-    # interact with the hand and each other, not with the table or floor.
     peg_kwargs = dict(
         contype=3,
         conaffinity=3,
@@ -274,12 +103,6 @@ def build_peg_scene(
 
     hole_x = config.hole_offset[0]
     hole_y = config.hole_offset[1]
-    # The hole body is lifted by hole_top_above_table so its entrance sits
-    # above the table top, forming a guide tube the hand can reach without
-    # its knuckles bottoming out on the table. Walls extend down by
-    # hole_depth; the lower portion passes through the table but the
-    # contype/conaffinity bits keep wall<->table non-colliding. The hand DOES
-    # collide with the walls (see the conaffinity pass after attach).
     hole_z = config.table_height + config.hole_top_above_table
     hole_body = spec.worldbody.add_body(
         name="hole",
@@ -337,15 +160,6 @@ def build_peg_scene(
         **wall_kwargs,
     )
 
-    # Pedestal: fill the air gap between the table top and the tube's
-    # underside. With hole_top_above_table (0.08) > hole_depth + plate (0.0625)
-    # the tube floats, leaving a ~1.75cm slot that admits the 1.6cm-diameter
-    # peg — the round-17 under-tube exploit measured insertion fraction 1.0
-    # for a table-lying peg with one end poked under the bore. The metric now
-    # also has an axial window (get_insertion_depth_jax), so this is physical
-    # hygiene: pegs can no longer get lost under the receptacle at all. No
-    # touch sensor (the wall-force sensor list feeds the obs and must keep its
-    # length); wall collision bits, so it blocks the peg but not the hand.
     pedestal_top = -config.hole_depth - wt / 2
     pedestal_bottom = -config.hole_top_above_table
     if pedestal_top > pedestal_bottom:
@@ -359,15 +173,7 @@ def build_peg_scene(
             **wall_kwargs,
         )
 
-    # Peg<->bore friction override. MuJoCo combines pair friction as the
-    # element-wise MAX of the two geoms, and both peg and walls default to
-    # sliding mu=1.0 — at mu=1 a released 0.02kg peg two-point-wedges in the
-    # bore (measured: engaged releases settled at fraction ~0.55 instead of
-    # the 0.757 bottom-out; Whitney's classic jamming analysis). Explicit
-    # <pair> overrides beat the max-combination, giving machined-part
-    # friction (mu~0.2, cf. Factory/IndustReal assets) against the bore while
-    # the peg keeps mu=1.0 against the fingertips for gripping.
-    for wall_name in ("hole_wall_px", "hole_wall_nx", "hole_wall_py", "hole_wall_ny", "hole_bottom"):
+    for wall_name in WALL_SENSOR_NAMES:
         spec.add_pair(
             geomname1="peg_geom",
             geomname2=wall_name,
@@ -376,17 +182,6 @@ def build_peg_scene(
             solref=[0.005, 1.0],
         )
 
-    # Touch-sensor sites: MuJoCo touch sensors sum only the contacts whose
-    # point lies INSIDE the site volume, so each site must cover its wall's
-    # whole contact face. The previous sites were 2.5mm spheres at the wall
-    # centres — a peg pressed into a wall registered 0.168N in the contact
-    # list and 0.0 on every wall sensor, leaving the force penalty unable to
-    # fire on wall jams and 4 obs dims constant. Box sites mirror each wall
-    # geom, inflated 2mm in EVERY dimension: contact points sit at the
-    # penetration midpoint (straddling the face), and a pressed capsule's
-    # force-bearing contact often lands on the wall's top rim — exactly the
-    # un-inflated site's boundary plane, which does not count as inside.
-    # Guarded by tests/test_geometry.py::test_wall_touch_sensors_alive.
     pad = 0.002
     wall_sites = {
         "hole_wall_px": ([cr + wt / 2, 0.0, -wh], [wt / 2 + pad, cr + wt + pad, wh + pad]),
@@ -415,84 +210,36 @@ def build_peg_scene(
 
 
 def _resolve_peg_names(model: mujoco.MjModel) -> PegNameMap:
-    # peg freejoint
+    hand = resolve_hand_names(model, exclude_joint="peg_freejoint")
+
     peg_jnt_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_JOINT, "peg_freejoint")
     peg_qpos_start = model.jnt_qposadr[peg_jnt_id]
     peg_qvel_start = model.jnt_dofadr[peg_jnt_id]
 
-    # hand joints (everything except the peg freejoint)
-    hand_joint_ids = []
-    for jid in range(model.njnt):
-        name = mujoco.mj_id2name(model, mujoco.mjtObj.mjOBJ_JOINT, jid)
-        if name and name != "peg_freejoint":
-            hand_joint_ids.append(jid)
-
-    if hand_joint_ids:
-        hand_qpos_start, hand_qpos_end, hand_qvel_start, hand_qvel_end = get_joint_qpos_qvel_range(
-            model, hand_joint_ids
-        )
-    else:
-        hand_qpos_start = hand_qpos_end = 0
-        hand_qvel_start = hand_qvel_end = 0
-
-    palm_body_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, "rh_palm")
-
-    # fingertips
-    fingertip_site_ids = [
-        mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_SITE, name) for name in FINGERTIP_SITE_NAMES
-    ]
-
-    finger_geom_ids_per_finger: list[set[int]] = [set() for _ in FINGER_BODY_PREFIXES]
-    for gid in range(model.ngeom):
-        body_id = model.geom_bodyid[gid]
-        body_name = mujoco.mj_id2name(model, mujoco.mjtObj.mjOBJ_BODY, body_id)
-        if not body_name:
-            continue
-
-        for finger_idx, prefix in enumerate(FINGER_BODY_PREFIXES):
-            if body_name.startswith(prefix):
-                finger_geom_ids_per_finger[finger_idx].add(gid)
-                break
-
-    # peg + hole
     peg_body_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, "peg")
     peg_geom_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_GEOM, "peg_geom")
     hole_body_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_BODY, "hole")
 
-    # sensors
-    finger_touch_adr = []
-    for touch_site in FINGER_TOUCH_SITE_NAMES:
-        sid = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_SENSOR, f"sensor_{touch_site}")
-        if sid >= 0:
-            finger_touch_adr.append(int(model.sensor_adr[sid]))
-
-    wall_sensor_site_names = [
-        "hole_wall_px",
-        "hole_wall_nx",
-        "hole_wall_py",
-        "hole_wall_ny",
-        "hole_bottom",
-    ]
     wall_force_adr = []
-    for wall_name in wall_sensor_site_names:
+    for wall_name in WALL_SENSOR_NAMES:
         sid = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_SENSOR, f"sensor_force_{wall_name}")
         if sid >= 0:
             wall_force_adr.append(int(model.sensor_adr[sid]))
 
     sensor_map = SensorMap(
-        finger_touch_adr=finger_touch_adr,
+        finger_touch_adr=hand.finger_touch_adr,
         wall_force_adr=wall_force_adr,
     )
 
     return PegNameMap(
-        hand_joint_ids=hand_joint_ids,
-        hand_qpos_start=hand_qpos_start,
-        hand_qpos_end=hand_qpos_end,
-        hand_qvel_start=hand_qvel_start,
-        hand_qvel_end=hand_qvel_end,
-        palm_body_id=palm_body_id,
-        fingertip_site_ids=fingertip_site_ids,
-        finger_geom_ids_per_finger=finger_geom_ids_per_finger,
+        hand_joint_ids=hand.hand_joint_ids,
+        hand_qpos_start=hand.hand_qpos_start,
+        hand_qpos_end=hand.hand_qpos_end,
+        hand_qvel_start=hand.hand_qvel_start,
+        hand_qvel_end=hand.hand_qvel_end,
+        palm_body_id=hand.palm_body_id,
+        fingertip_site_ids=hand.fingertip_site_ids,
+        finger_geom_ids_per_finger=hand.finger_geom_ids_per_finger,
         peg_body_id=peg_body_id,
         peg_geom_id=peg_geom_id,
         peg_qpos_start=peg_qpos_start,

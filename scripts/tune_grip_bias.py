@@ -1,10 +1,4 @@
-"""Local CPU harness to tune GRIP_BIAS so the closed grip holds the peg vertical.
-
-Places the peg upright at grasp_site (exactly as peg_env._reset_single does),
-holds a candidate grip ctrl for N steps, and reports how far the peg tilts
-(axis_align = |dot(peg_axis, world_z)|) plus the per-finger contact geometry
-that explains the tilt. No checkpoint / no GPU needed.
-"""
+"""Local CPU harness to tune GRIP_BIAS so the closed grip holds the peg vertical."""
 from __future__ import annotations
 
 import mujoco
@@ -122,9 +116,6 @@ def _with(**over):
     return b
 
 
-# THJ5=+1.0 brought the thumb into opposition (0.71 -> 0.94). Refine around it:
-# push THJ5 to max, square the thumb pad (THJ4/THJ2/THJ1), and try slightly
-# less finger distal curl so fingertips press the peg side rather than curl over.
 def _without(*keys):
     b = dict(GRIP_BIAS)
     for k in keys:

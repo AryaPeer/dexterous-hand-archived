@@ -9,13 +9,6 @@ from dexterous_hand.curriculum.callbacks import (
 from dexterous_hand.envs.peg_env import ShadowHandPegMjxEnv
 from scripts.training._common import run_training
 
-# Compute-saver gates. The floors are first-principles bars, not
-# sanity-derived (the old 5M baselines predate the insertion-metric
-# containment fix and measured the drop-the-peg exploit): at 10M we check
-# grip pose + progress, at 30M that real in-bore insertion EXISTS at all (a
-# mean of exactly 0 over the window means the policy never inserts — the
-# run's bet has failed). Re-derive proper floors from the first post-fix 5M
-# sanity; the baseline column is NaN until then. info_key, floor, baseline, why:
 PEG_GATES = [
     (
         10_000_000,

@@ -10,11 +10,7 @@ def scale_stage_starts(
     total_timesteps: int,
     reference_total_timesteps: int,
 ) -> list[tuple]:
-    """Scale stage start steps from `reference_total_timesteps` to `total_timesteps`.
-
-    Stages are `(start_step, *params)` tuples. Output is monotonic, clamped to
-    [0, total_timesteps], and anchored at 0 for the first stage.
-    """
+    """Scale stage start steps from `reference_total_timesteps` to `total_timesteps`."""
     if total_timesteps <= 0:
         raise ValueError("total_timesteps must be > 0")
     if reference_total_timesteps <= 0:
@@ -49,13 +45,6 @@ class AssemblyCurriculumCallback(BaseCallback):
         if not self.stages:
             return
 
-        # On a fresh run num_timesteps==0 -> stage 0. On a RESUME
-        # (reset_num_timesteps=False) num_timesteps is already cumulative, so
-        # jump straight to the correct stage rather than detouring through stage
-        # 0 — which, for the peg env, would rebuild the model to the EASIEST
-        # clearance and reset all envs, then fast-forward stage-by-stage with a
-        # full XLA recompile at each boundary, and run the first step at the
-        # wrong (stage-0) clearance/p_pre_grasped.
         start_stage = 0
         for i, stage in enumerate(self.stages):
             if self.num_timesteps >= stage[0]:
@@ -83,12 +72,6 @@ class AssemblyCurriculumCallback(BaseCallback):
             self._current_stage += 1
             clearance = self.stages[self._current_stage][1]
             p_pre_grasped = float(self.stages[self._current_stage][2])
-            # A clearance change rebuilds the model and resets every env
-            # mid-rollout, so each env contributes one stale transition (the
-            # pre-reset obs pairs with a post-reset next-obs) to GAE. That is
-            # ~num_envs transitions per stage boundary, 4 boundaries per run
-            # (~3k of 150M samples) — accepted; bridging it would need a
-            # buffer-side episode cut.
             self.training_env.env_method("set_curriculum_params", clearance, p_pre_grasped)
 
             if self.verbose:

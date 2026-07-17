@@ -62,9 +62,6 @@ class ShadowHandGraspMjxEnv(MjxVecEnv):
 
         init_qpos = self._mj_data.qpos.copy()
         apply_flexion_bias(init_qpos, self._mj_model)
-        # Start hovering at the slide_z ctrl midpoint: a zero smoothed action
-        # commands exactly this height, so the hand holds its reset pose, and
-        # the raised start keeps fingertips clear of the cube spawn band.
         slide_z_jid = mujoco.mj_name2id(self._mj_model, mujoco.mjtObj.mjOBJ_JOINT, "slide_z")
         init_qpos[self._mj_model.jnt_qposadr[slide_z_jid]] = SLIDE_Z_INIT
         self._init_qpos = jnp.array(init_qpos)
@@ -87,8 +84,6 @@ class ShadowHandGraspMjxEnv(MjxVecEnv):
         return model
 
     def _obs_size(self) -> int:
-        # 27 qpos (3 slides + 24 hand) + 27 qvel + obj pos 3 / quat 4 /
-        # linvel 3 / angvel 3 + rel_pos 3 + fingertips 15 + prev actions 23
         return 108
 
     def _action_size(self) -> int:
@@ -108,19 +103,10 @@ class ShadowHandGraspMjxEnv(MjxVecEnv):
         qpos = self._init_qpos
 
         hand_qpos = qpos[nm.hand_qpos_start : nm.hand_qpos_end]
-        # ±0.05 noise on rotational joints is ~3° — fine. On the linear sliders
-        # (qpos[0:3] = slide_x/y/z) it's ±5cm, which combined with the ±5cm
-        # object spawn caused 78% spawn-overlap at the round-15 mount.
-        # Slider start is deterministic; only the object's XY is randomized.
         noise = jax.random.uniform(k1, shape=hand_qpos.shape, minval=-0.05, maxval=0.05)
         noise = noise.at[0:3].set(0.0)
         qpos = qpos.at[nm.hand_qpos_start : nm.hand_qpos_end].set(hand_qpos + noise)
 
-        # Cube spawns forward of the hand's reset footprint. With slider=0 the
-        # hand's fingertip cluster sits around x≈[-0.01, +0.04], y≈[-0.09, +0.06].
-        # Without the forward shift, ~86% of random spawns penetrated the hand
-        # at reset (audit_spawn_collisions.py). x∈[+0.05, +0.10] keeps the cube
-        # clear of fingertips while still inside the slider's +0.15 reach.
         obj_x = jax.random.uniform(k2, minval=0.05, maxval=0.10)
         obj_y = jax.random.uniform(k3, minval=-0.03, maxval=0.03)
         obj_z = self.scene_config.table_height + self._object_half_height + 0.001
@@ -193,7 +179,6 @@ class ShadowHandGraspMjxEnv(MjxVecEnv):
             object_linear_velocity=obj_linvel,
             finger_contact_mask=contact_mask,
             actions=smoothed,
-            previous_actions=env_state.previous_actions,
             table_height=self.scene_config.table_height,
             lift_target=self.reward_config.lift_target,
             hold_velocity_threshold=self.reward_config.hold_velocity_threshold,
@@ -211,13 +196,6 @@ class ShadowHandGraspMjxEnv(MjxVecEnv):
             idle_grace_steps=self.reward_config.idle_grace_steps,
         )
 
-        # No success terminal (Apr-10 / Adroit / robosuite convention): the
-        # episode runs the full horizon and the policy is paid per-step
-        # `holding` to KEEP the object at height — that sustained hold is the
-        # demo behavior, and it also removes the success-termination-farming
-        # wart flagged in the 2026-06-10 audit (success pays a one-shot latched
-        # bonus; there is no terminal to race for). is_success still reaches
-        # SB3's success-rate logging via info.
         fell_off = obj_pos[2] < self.scene_config.table_height - 0.05
         launched = jnp.linalg.norm(obj_pos) > 1.5
         done = fell_off | launched

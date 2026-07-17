@@ -1,8 +1,4 @@
-"""Render an mp4 showing 12 consecutive spawn samples (grasp env) and 12 for
-peg env (mixed p_pre_grasped). Each spawn freezes for 15 frames showing the
-spawn state, then runs 35 settle frames to show what happens. So 50 frames
-per spawn × 12 spawns = 600 frames per env (~24 sec at 25fps).
-"""
+"""Render an mp4 showing 12 consecutive spawn samples (grasp env) and 12 for"""
 from __future__ import annotations
 
 import argparse
@@ -31,9 +27,6 @@ def grasp_render(out_path: Path, n_spawns: int = 12, seed: int = 0) -> None:
     gt, gs = OBJECT_TYPES["large_cube"]
     half_h = get_object_half_height(gt, gs)
     obj_z = cfg.table_height + half_h + 0.001
-    # settle_ctrl matches the spawn-pose qpos so position actuators don't
-    # drive the bent fingers back toward fully open (which was making the hand
-    # swing into the cube on the first sim step).
     settle_ctrl = build_grip_ctrl(model, bias_map=TABLE_TASK_FLEXION_BIAS)
 
     init_qpos = data.qpos.copy()
@@ -101,8 +94,6 @@ def grasp_render(out_path: Path, n_spawns: int = 12, seed: int = 0) -> None:
 def peg_render(out_path: Path, n_spawns: int = 12, seed: int = 0, p_pre_grasped: float = 0.5) -> None:
     cfg = PegSceneConfig()
     model, data, nm = build_peg_scene(cfg)
-    # peg env switches qpos bias based on p_pre_grasped, so the matching ctrl
-    # depends on the per-spawn pose. Compute both upfront and pick at spawn time.
     grip_ctrl = build_grip_ctrl(model, bias_map=GRIP_BIAS)
     open_ctrl = build_grip_ctrl(model, bias_map=TABLE_TASK_FLEXION_BIAS)
 

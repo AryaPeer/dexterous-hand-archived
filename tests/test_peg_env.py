@@ -32,12 +32,7 @@ class TestPegMjxSmoke:
             env.close()
 
     def test_pregrasped_lift_reference_clamped_to_table(self):
-        """Round-17 regression: pre-grasped spawns place the peg in-hand
-        (~0.52), and referencing lift from THERE paid `lift` 0 at the engaged
-        pose — the per-step chain inverted (held-high 25.5 > hover 23.5 >
-        engaged 18.7) and pushed the policy away from the endgame in 100% of
-        early-curriculum episodes. The reference must clamp to the table
-        spawn height."""
+        """Pre-grasped spawns must clamp the lift reference to the table height."""
         env = ShadowHandPegMjxEnv(num_envs=4, seed=0, max_episode_steps=50)
         try:
             env.set_curriculum_params(
@@ -48,24 +43,17 @@ class TestPegMjxSmoke:
             table_spawn = (
                 cfg.table_height + cfg.peg_half_length + cfg.peg_radius + 0.001
             )
-            init_h = np.asarray(env._env_state_batch.initial_peg_height)
-            assert np.all(init_h <= table_spawn + 1e-6)
             reward_init_h = np.asarray(
                 env._env_state_batch.reward_state.initial_peg_height
             )
             assert np.all(reward_init_h <= table_spawn + 1e-6)
-            # the clamp must have had something to clamp: pre-grasped pegs sit
-            # in-hand well above the table spawn height after settle
             peg_z = np.asarray(env._mjx_data_batch.xpos[:, env._nm.peg_body_id, 2])
             assert np.all(peg_z > table_spawn + 0.02)
         finally:
             env.close()
 
     def test_from_config_seeds_first_rollout_p_pre_grasped(self):
-        """SB3 resets envs before the curriculum callback's
-        _on_training_start fires, so the env must be BORN with curriculum
-        stage 0's p_pre_grasped — not 0.0 — or the whole first episode wave
-        is table-spawned regardless of the schedule."""
+        """SB3 resets envs before the curriculum callback's"""
         config = MjxPegTrainConfig(num_envs=2, max_episode_steps=10)
         env = ShadowHandPegMjxEnv.from_config(config)
         try:

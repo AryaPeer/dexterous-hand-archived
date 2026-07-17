@@ -1,17 +1,4 @@
-"""Audit: when grasp / peg envs reset, do the hand and object spawn in
-penetrating contact?
-
-For each env type we sample many (cube, slider) random offsets from the
-real reset distribution and:
-  1) compute fingertip & palm positions at reset
-  2) measure minimum distance to the object surface
-  3) count cases where a hand geom is *inside* the object volume
-  4) settle 5 mj_steps with ctrl=settle_ctrl and report object displacement +
-     fingertip-cube contact count
-
-Same probe is run at peg curriculum p_pre_grasped ∈ {0.0, 1.0} so we cover
-both the "peg on table" and "peg in hand" stages.
-"""
+"""Audit: when grasp / peg envs reset, do the hand and object spawn in"""
 from __future__ import annotations
 
 import argparse

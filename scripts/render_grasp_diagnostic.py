@@ -1,21 +1,4 @@
-"""Render grasp-scene diagnostics.
-
-Three conditions:
-  1. current geometry + random policy (sanity: scene loads, nothing explodes)
-  2. grip+lift proof at the spawn-band centre — a seeded grip around the cube,
-     settle, then slide_z lift to ~0.18 and hold. This is the physical
-     winnability demo for lift_target=0.10 (see
-     tests/test_geometry.py::test_grasp_lift_reaches_target_height).
-  3. same proof at the far corner of the spawn band (grip seed shifted with
-     the cube) — checks the lift works across the band, not just at centre.
-
-The old scripted open-loop "slide+curl" policy was removed 2026-07-14: it
-never actually captured the cube (it swatted it away during the approach and
-closed on air), so its metrics measured nothing. The teleported-grip proof
-isolates the question that matters for the reward chain — "does a formed grip
-plus slide_z yield a stable lift?" — the approach itself is RL's job (the 5M
-sanity already showed nfc ~4.9 grips form reliably).
-"""
+"""Render grasp-scene diagnostics."""
 from __future__ import annotations
 
 import argparse
@@ -32,9 +15,6 @@ from dexterous_hand.envs.scene_builder import (
     get_object_half_height,
 )
 
-# Grip seed measured to hold a 20cm+ lift (2026-07-14 sweep: 222/432 combos
-# held >10cm; this one 0.235m). Keep in sync with
-# tests/test_geometry.py::CUBE_GRIP_SEED.
 CUBE_GRIP_SEED = {
     "sx": 0.115, "sy": -0.017, "z0": -0.02,
     "j3": 1.0, "j12": 0.5, "thj5": 0.5, "th1": 0.7, "squeeze": 0.4,

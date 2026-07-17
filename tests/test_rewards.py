@@ -23,7 +23,6 @@ def _grasp_kwargs(cfg: RewardConfig, table_height: float) -> dict:
         object_linear_velocity=jnp.zeros(3),
         finger_contact_mask=jnp.array([True, True, True, False, False]),
         actions=jnp.zeros(23),
-        previous_actions=jnp.zeros(23),
         table_height=table_height,
         lift_target=cfg.lift_target,
         hold_velocity_threshold=cfg.hold_velocity_threshold,
@@ -54,7 +53,6 @@ class TestGraspJax:
             object_linear_velocity,
             finger_contact_mask,
             actions,
-            previous_actions,
         ):
             return grasp_reward(
                 state=state,
@@ -63,7 +61,6 @@ class TestGraspJax:
                 object_linear_velocity=object_linear_velocity,
                 finger_contact_mask=finger_contact_mask,
                 actions=actions,
-                previous_actions=previous_actions,
                 table_height=0.4,
                 lift_target=cfg.lift_target,
                 hold_velocity_threshold=cfg.hold_velocity_threshold,
@@ -87,7 +84,6 @@ class TestGraspJax:
             jnp.array([0.0, 0.0, 0.5]),
             jnp.zeros(3),
             jnp.array([True, True, True, False, False]),
-            jnp.zeros(23),
             jnp.zeros(23),
         )
         assert np.isfinite(float(total))
@@ -124,11 +120,7 @@ class TestGraspJax:
         assert float(info["reward/drop"]) < 0.0
 
     def test_success_annuity_pays_while_held(self):
-        """Success pays per-step while the hold condition is sustained and
-        stops the moment the cube is dropped. A lift/hold/drop cycle therefore
-        strictly loses income vs steady holding (it forfeits the payment
-        stream for success_hold_steps + the -20 drop penalty), so there is no
-        yo-yo farming exploit for a latch to patch."""
+        """Success pays per-step while the hold condition is sustained and"""
         cfg = RewardConfig()
         held = _grasp_kwargs(cfg, 0.4)
         # 3 contacts (default mask), at rest, lift_factor 1.0 -> at_target
@@ -182,9 +174,7 @@ class TestPegJax:
             contact_force_magnitude=jnp.asarray(0.0),
             finger_contact_mask=jnp.array([True, True, True, False, False]),
             peg_height=jnp.asarray(0.9),
-            peg_linvel=jnp.zeros(3),
-            actions=jnp.zeros(22),
-            previous_actions=jnp.zeros(22),
+            actions=jnp.zeros(23),
             weights=cfg.weights,
             peg_length=peg_length,
             lift_target=cfg.lift_target,
@@ -218,9 +208,7 @@ class TestPegJax:
             contact_force_magnitude,
             finger_contact_mask,
             peg_height,
-            peg_linvel,
             actions,
-            previous_actions,
         ):
             return peg_reward(
                 state=state,
@@ -234,9 +222,7 @@ class TestPegJax:
                 contact_force_magnitude=contact_force_magnitude,
                 finger_contact_mask=finger_contact_mask,
                 peg_height=peg_height,
-                peg_linvel=peg_linvel,
                 actions=actions,
-                previous_actions=previous_actions,
                 weights=cfg.weights,
                 peg_length=peg_length,
                 lift_target=cfg.lift_target,
@@ -266,19 +252,12 @@ class TestPegJax:
             jnp.asarray(0.0),
             jnp.array([True, True, True, False, False]),
             jnp.asarray(0.9),
-            jnp.zeros(3),
-            jnp.zeros(22),
-            jnp.zeros(22),
+            jnp.zeros(23),
         )
         assert np.isfinite(float(total))
         assert "reward/depth" in info
 
     def test_insertion_hold_smoothly_grows_complete_bonus(self):
-        # smooth bonus replaces the binary cliff: complete = bonus *
-        # sigmoid(20*(frac-0.7)) * sigmoid(hold/5 - 1). Below threshold
-        # complete is near-zero; once frac > threshold complete grows
-        # monotonically with hold count and asymptotes near
-        # complete_bonus * sigmoid(20*(0.917-0.7)) ≈ 0.987 * complete_bonus.
         cfg = PegRewardConfig()
         kw = self._kw()
         kw["insertion_depth"] = jnp.asarray(0.055)
@@ -291,17 +270,11 @@ class TestPegJax:
             assert value >= prev_complete - 1e-6
             prev_complete = value
 
-        # insertion_fraction = 0.055 / 0.06 = 0.9166...; excess over 0.7
-        # is ≈ 0.2166. asymptote = bonus * sigmoid(20 * 0.2166).
         excess = 0.055 / 0.06 - cfg.success_threshold
         asymptote = cfg.complete_bonus / (1.0 + float(np.exp(-20.0 * excess)))
         np.testing.assert_allclose(prev_complete, asymptote, rtol=1e-3)
 
     def test_complete_pays_with_zero_contacts(self):
-        # Regression for the 2026-07-14 release-forfeit bug: the bore cannot
-        # admit fingers, so success REQUIRES releasing the peg — complete was
-        # gated on contact_scale and paid ~0 for a settled released peg while
-        # a gripped hover below threshold farmed shaping forever.
         kw = self._kw()
         kw["insertion_depth"] = jnp.asarray(0.055)
         kw["finger_contact_mask"] = jnp.array([False] * 5)
@@ -316,8 +289,6 @@ class TestPegJax:
         )
 
     def test_place_monotone_toward_engaged_pose(self):
-        # place must pay more the closer the peg pose is to the engaged
-        # release pose (vertical, tip |release_height| inside the bore).
         cfg = PegRewardConfig()
         peg_length = 0.06
         hole_z = 0.88
@@ -337,9 +308,6 @@ class TestPegJax:
         assert p_engaged > 0.9
 
     def test_drop_penalty_not_fired_when_inserted(self):
-        # Releasing the peg INTO the bore is the winning move; the was_lifted
-        # drop penalty must never fire on an inserted peg even if its height
-        # ends near the spawn height.
         kw = self._kw()
         state = init_peg_reward_state(0.85)
         state = state._replace(was_lifted=jnp.array(True))
@@ -351,8 +319,6 @@ class TestPegJax:
         assert float(info["reward/drop"]) == 0.0
 
     def test_complete_below_threshold_stays_small(self):
-        # below the success_threshold (0.7), the insertion-fraction sigmoid
-        # collapses the bonus toward zero independent of hold count.
         cfg = PegRewardConfig()
         kw = self._kw()
         kw["insertion_depth"] = jnp.asarray(0.03)  # frac=0.5 < 0.7

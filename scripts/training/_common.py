@@ -39,33 +39,13 @@ class RewardInfoLoggerCallback(BaseCallback):
         self._buf.clear()
 
 
-# A single gated metric: (info_key, floor, baseline_5m, why).
-#   info_key   - raw env-info key, e.g. "metrics/axis_align" / "reward/complete"
-#   floor      - the recent mean must stay >= this or the gate STOPS the run
-#   baseline_5m- the value observed in the 2026-06-01 5M sanity (for the report)
-#   why        - one-line human reason printed in the diagnostic
 Check = tuple[str, float, float, str]
 # A milestone: (timestep, [Check, ...], label).
 Milestone = tuple[int, list[Check], str]
 
 
 class MilestoneGateCallback(BaseCallback):
-    """Compute-saver gate. At each milestone timestep, print a diagnostic of the
-    gated task metrics (recent rollout means) against floors derived from the
-    round-16-fix 5M sanity, and STOP training early if any metric is clearly
-    below floor — a regression/collapse, or a progress metric gone flat.
-
-    This is a *diagnostic* stop, not a silent kill-switch: it prints each
-    metric, its 5M baseline, the floor and a one-line reason, so the failure
-    mode is identifiable straight from the log. ``CheckpointCallback`` saves
-    every ~500k steps, so a stop here always leaves a resumable checkpoint — if
-    you judge the stop premature, resume with ``resume-{peg,grasp}-mjx``;
-    otherwise fix the cause and restart. Disable entirely with ``--no-gate``.
-
-    The gate only reads keys present in the env ``info`` dicts ("metrics/..."
-    and "reward/..."). Unknown keys are reported as SKIP and never fail the
-    gate, so a typo or a renamed metric can't kill a healthy run.
-    """
+    """Compute-saver gate. At each milestone timestep, print a diagnostic of the"""
 
     def __init__(
         self, milestones: list[Milestone], window_rollouts: int = 15, verbose: int = 1
@@ -80,9 +60,6 @@ class MilestoneGateCallback(BaseCallback):
         self._stop = False
 
     def _on_training_start(self) -> None:
-        # On a resume (num_timesteps already cumulative) skip milestones that
-        # are already behind us, so a deliberately-resumed run is not
-        # insta-stopped on its first rollout.
         while (
             self._idx < len(self._milestones)
             and self.num_timesteps >= self._milestones[self._idx][0]
@@ -125,13 +102,7 @@ class MilestoneGateCallback(BaseCallback):
     def evaluate_checks(
         self, checks: list[Check]
     ) -> tuple[list[tuple], list[Check]]:
-        """Pure decision step (unit-testable): returns (rows, failures).
-
-        ``rows`` is one (tag, key, value-or-None, floor, baseline, why) per
-        check for the report; ``failures`` is the subset whose recent mean is
-        below floor. A check whose metric was never observed is reported SKIP
-        and is NOT a failure.
-        """
+        """Pure decision step (unit-testable): returns (rows, failures)."""
         rows: list[tuple] = []
         failures: list[Check] = []
         for key, floor, base, why in checks:
@@ -217,11 +188,7 @@ def apply_saved_config(config: Any, saved: dict, _path: str = "config") -> None:
 
 
 def load_saved_config(config: Any, model_path: Path) -> None:
-    """Find and apply the config.json saved next to a model/checkpoint.
-
-    Without this, a resume silently rebuilds the env/hyperparameters from
-    dataclass DEFAULTS — any non-default original run would drift.
-    """
+    """Find and apply the config.json saved next to a model/checkpoint."""
     for candidate in (model_path.parent, model_path.parent.parent):
         saved_path = candidate / "config.json"
         if saved_path.exists():
@@ -284,13 +251,7 @@ def run_training(
             norm_obs=config.norm_obs,
             norm_reward=config.norm_reward,
             clip_obs=10.0,
-            # Explicit: normalized rewards are clipped to +-10 sigma. With
-            # annuity-style rewards (no one-shot spikes) clipping a
-            # persistent stream preserves ordering; do NOT reintroduce
-            # one-shot bonuses without revisiting this.
             clip_reward=10.0,
-            # return-normalization discount; SB3's default (0.99) can
-            # silently mismatch the PPO gamma this config trains with
             gamma=config.gamma,
         )
 
@@ -364,11 +325,7 @@ def run_resume(
     env_cls: Any,
     extra_callbacks: list[BaseCallback] | None = None,
 ) -> None:
-    """Shared resume body: load model + VecNormalize stats, continue training.
-
-    `config` must already have the saved run config applied (see
-    load_saved_config) and CLI overrides re-applied by the caller.
-    """
+    """Shared resume body: load model + VecNormalize stats, continue training."""
     from sbx import PPO
     from stable_baselines3.common.callbacks import CheckpointCallback
     from stable_baselines3.common.vec_env import VecMonitor, VecNormalize

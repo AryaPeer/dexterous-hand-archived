@@ -35,8 +35,6 @@ def make_data(cfg: PegSceneConfig, seed: int = 0, pre_grasped: bool = False):
             qpos[nm.peg_qpos_start + 3 : nm.peg_qpos_start + 7] = [1.0, 0.0, 0.0, 0.0]
     else:
         apply_flexion_bias(qpos, model)
-        # peg on table at small XY offset, away from hole
-        # spawn at radius ~0.045 m from hole (between spawn_min and spawn_max)
         theta = rng.uniform(0.0, 2 * np.pi)
         r = 0.045
         px = float(np.cos(theta) * r)
@@ -57,12 +55,7 @@ def scripted_grip_and_lift(
     step: int,
     grip_ctrl: np.ndarray,
 ) -> np.ndarray:
-    """Open-loop: hold the closed-grip ctrl always; slowly slide_y to nudge peg.
-
-    Since the peg starts in the hand (pre_grasped) or right beneath it,
-    holding the closed grip should keep contact. After 50 steps, raise nothing
-    (no z-slider in peg) — just hold and see if the grip is stable.
-    """
+    """Open-loop: hold the closed-grip ctrl always; slowly slide_y to nudge peg."""
     ctrl = grip_ctrl.copy()
     # at no point do we override slide_x/slide_y — let them stay at 0
     return ctrl

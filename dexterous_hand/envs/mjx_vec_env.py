@@ -149,9 +149,6 @@ class MjxVecEnv(VecEnv):
             base_data,
         )
 
-        # Fold in a running counter: with a constant fold every full reset
-        # (training start AND each curriculum-driven rebuild) replays the
-        # identical spawn sequence.
         self._env_keys = jax.random.split(
             jax.random.fold_in(self._master_key, self._full_reset_count), self._num_envs
         )
@@ -189,16 +186,6 @@ class MjxVecEnv(VecEnv):
         if reward_info is not None:
             reward_info["metrics/nan_rate"] = bad.astype(jnp.float32)
 
-        # Bootstrap (TimeLimit.truncated) ONLY on timeout: the episode was cut
-        # short by the horizon but would have continued, so SB3 adds
-        # gamma*V(terminal_obs). Physical failures (fell/launched) are true
-        # (absorbing) terminals — no bootstrap. Since 2026-07-14 neither task
-        # terminates on success: the solved state is the highest-paying
-        # per-step state and the episode runs the horizon (holding the cube at
-        # height / peg settled in the bore), which removes the
-        # success-termination-farming incentive. is_success still propagates
-        # to per-env infos via reward_info (logging + SB3 success-rate
-        # tracking).
         truncated_only = timed_out & ~dones
         dones = dones | timed_out | bad
 
@@ -257,13 +244,6 @@ class MjxVecEnv(VecEnv):
         truncated_np = np.asarray(truncated_only)
         rewards_np = np.asarray(rewards, dtype=np.float64)
 
-        # Host-side info cost dominates the python loop at large num_envs
-        # (num_envs dicts x ~25 numpy scalars per control step), so the
-        # reward/metric streams are reduced to batch MEANS on device and
-        # attached to infos[0] only — the logging/gate callbacks read them
-        # from whichever info carries them, and a mean-of-per-step-means
-        # equals the mean over envs x steps. Only `is_success` stays per-env
-        # (SB3's success-rate tracking is per-episode).
         is_success_np: np.ndarray | None = None
         agg_info: dict[str, float] = {}
         if reward_info is not None:

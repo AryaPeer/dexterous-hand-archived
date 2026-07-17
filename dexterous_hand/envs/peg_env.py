@@ -39,7 +39,6 @@ class PegEnvState(NamedTuple):
     smoothed_actions: jnp.ndarray
     stage: jnp.ndarray
     no_contact_grace: jnp.ndarray
-    initial_peg_height: jnp.ndarray
     step_count: jnp.ndarray
     key: jax.Array
 
@@ -66,10 +65,6 @@ class ShadowHandPegMjxEnv(MjxVecEnv):
         self._episode_limit = max_episode_steps
         self._reward_weights = self.reward_config.weights
 
-        # Seeded from the caller (from_config passes curriculum stage 0's p):
-        # SB3 resets every env BEFORE the curriculum callback's
-        # _on_training_start fires, so a 0.0 here would make the entire first
-        # episode wave table-spawned regardless of the curriculum schedule.
         self._p_pre_grasped = jnp.array(float(p_pre_grasped))
 
         super().__init__(num_envs=num_envs, seed=seed, obs_noise_std=obs_noise_std, dr=dr)
@@ -102,13 +97,6 @@ class ShadowHandPegMjxEnv(MjxVecEnv):
         self._init_qpos_grip = jnp.array(init_qpos_grip)
 
         self._grip_ctrl = jnp.array(build_grip_ctrl(self._mj_model))
-        # Action-space inverse of the settle grip ctrl. Reset seeds the EMA
-        # smoothing state (and the previous_actions obs) with this instead of
-        # zeros: a zero smoothed action maps to ctrl-range MIDPOINTS (fingers
-        # half-open, slide_z +0.025), so a zeros-init told the servos to relax
-        # the settle grip and drift the hand up 2.5cm for the first ~10 steps
-        # (EMA alpha 0.2) of every episode — pre-grasped spawns opened with an
-        # involuntary loosen-and-lurch the policy had to fight before acting.
         self._grip_action = (
             2.0 * (self._grip_ctrl - self._ctrl_low) / (self._ctrl_high - self._ctrl_low)
             - 1.0
@@ -128,9 +116,6 @@ class ShadowHandPegMjxEnv(MjxVecEnv):
         self._peg_length = (
             self.scene_config.peg_half_length * 2.0 + self.scene_config.peg_radius * 2.0
         )
-        # Insertion-depth lateral containment bound. Depends on the curriculum's
-        # current clearance, so it must be recomputed here (this method runs on
-        # every clearance change, before _batched_step/_batched_get_obs re-jit).
         self._bore_radius = self.scene_config.peg_radius + self.scene_config.clearance
 
     def set_curriculum_params(self, clearance: float, p_pre_grasped: float) -> None:
@@ -150,16 +135,9 @@ class ShadowHandPegMjxEnv(MjxVecEnv):
             self._ctrl_high = jnp.array(self._mj_model.actuator_ctrlrange[:n_act, 1])
 
             self._rebuild_peg_caches()
-            # obs + step depend on the rebuilt model, so re-jit them only when the
-            # model actually changes (a clearance change). _step_single does NOT
-            # close over _p_pre_grasped, so a p-only stage transition must not pay
-            # to recompile the vmapped, frame_skip-scanned physics step (minutes
-            # of GPU stall for no behavioral change).
             self._batched_get_obs = jax.jit(jax.vmap(self._get_obs_single, in_axes=(None, 0, 0)))
             self._batched_step = self._build_batched_step()
 
-        # _reset_single closes over _p_pre_grasped (baked in as a trace-time
-        # constant), so the reset must be re-jitted on every curriculum change.
         self._batched_reset = jax.jit(jax.vmap(self._reset_single, in_axes=(None, 0, 0)))
 
         if clearance_changed and self._mjx_data_batch is not None:
@@ -176,12 +154,6 @@ class ShadowHandPegMjxEnv(MjxVecEnv):
         qpos = jnp.where(spawn_pre_grasped, self._init_qpos_grip, self._init_qpos_table)
 
         hand_qpos = qpos[nm.hand_qpos_start : nm.hand_qpos_end]
-        # qpos[0:3] = slide_x/y/z are linear (meters), rest is radians — the
-        # ±0.05 joint noise is sized for radians. ±0.05m on x/y was kicking
-        # the peg up to 580mm during the 5-step settle, and ±0.05m on slide_z
-        # started ~17% of episodes with the knuckles pressed into the table.
-        # Zero all three sliders — only the peg XY (random radius) is
-        # randomized.
         noise = jax.random.uniform(k1, shape=hand_qpos.shape, minval=-0.05, maxval=0.05)
         noise = noise.at[0:3].set(0.0)
         qpos = qpos.at[nm.hand_qpos_start : nm.hand_qpos_end].set(hand_qpos + noise)
@@ -190,10 +162,6 @@ class ShadowHandPegMjxEnv(MjxVecEnv):
         mjx_data = mjx_data.replace(qpos=qpos, qvel=qvel)
         mjx_data = mjx.forward(mjx_model, mjx_data)
 
-        # peg spawn: radial sampling around the hole, restricted to the forward
-        # hemisphere (theta ∈ [-π/2, +π/2]) so the on-table spawn doesn't drop
-        # the peg into the hand's reset footprint behind the palm. The
-        # pregrasp_xyz branch (theta unused) is unaffected.
         min_r = float(self.scene_config.spawn_min_radius)
         max_r = float(self.scene_config.spawn_max_radius)
         r = jax.random.uniform(k2, minval=min_r, maxval=max_r)
@@ -221,8 +189,6 @@ class ShadowHandPegMjxEnv(MjxVecEnv):
         mjx_data = mjx_data.replace(qpos=qpos, qvel=jnp.zeros(mjx_model.nv))
         mjx_data = mjx.forward(mjx_model, mjx_data)
 
-        # GRIP_BIAS ctrl during settle: ctrl=0 would drive flexion joints to
-        # angle 0 (fully open) and drop the peg before the policy ever acts.
         mjx_data = mjx_data.replace(ctrl=self._grip_ctrl)
 
         def _settle(data: Any, _: Any) -> tuple[Any, None]:
@@ -230,18 +196,6 @@ class ShadowHandPegMjxEnv(MjxVecEnv):
 
         mjx_data, _ = jax.lax.scan(_settle, mjx_data, None, length=5)
 
-        # Round-17: reference lift from the TABLE spawn height even when the
-        # episode spawns pre-grasped in-hand (~0.52). Referencing the in-hand
-        # spawn made `lift` pay 0 at the engaged pose (peg centre 0.503), so
-        # in 100% of early-curriculum episodes the per-step chain INVERTED
-        # (held-high 25.5 > hover-over-bore 23.5 > engaged 18.7) and pushed
-        # the policy AWAY from the endgame — the opposite of the monotone
-        # table-spawn chain check_reward_gradient.py proves (26.5 < 30.9 <
-        # 38.7). Clamping the reference saturates lift's 1.0 cap everywhere
-        # >= lift_target above the table, so descending into engagement never
-        # loses lift reward. Intended side effects for pre-grasped spawns:
-        # was_lifted arms immediately (fumbling the spawn grip now costs the
-        # drop penalty) and the stage machine starts at 2 (the peg IS lifted).
         table_spawn_height = (
             self.scene_config.table_height
             + self.scene_config.peg_half_length
@@ -258,7 +212,6 @@ class ShadowHandPegMjxEnv(MjxVecEnv):
             smoothed_actions=self._grip_action,
             stage=jnp.array(0, dtype=jnp.int32),
             no_contact_grace=jnp.array(0, dtype=jnp.int32),
-            initial_peg_height=initial_peg_height,
             step_count=jnp.array(0, dtype=jnp.int32),
             key=k5,
         )
@@ -325,13 +278,9 @@ class ShadowHandPegMjxEnv(MjxVecEnv):
 
         # curriculum stage gating
         fingers_on_peg = n_contacts >= 2
-        peg_lifted = peg_pos[2] > env_state.initial_peg_height + 0.02
+        peg_lifted = peg_pos[2] > env_state.reward_state.initial_peg_height + 0.02
         peg_near_hole = jnp.linalg.norm(peg_pos[:2] - hole_pos[:2]) < 0.03
         peg_aligned = jnp.abs(jnp.dot(peg_axis, hole_axis)) > 0.95
-        # An in-bore peg is stage 3 regardless of contacts: the winning move is
-        # to RELEASE the peg over the bore (fingers cannot fit inside), so the
-        # no-contact grace must not demote the solved state to stage 0 — that
-        # made idle_stage0 charge -0.3/step on a successfully inserted peg.
         peg_inserted = insertion_depth > 0.02
 
         new_grace = jnp.where(
@@ -361,9 +310,7 @@ class ShadowHandPegMjxEnv(MjxVecEnv):
             contact_force_magnitude=contact_force_mag,
             finger_contact_mask=contact_mask,
             peg_height=peg_height,
-            peg_linvel=peg_linvel,
             actions=smoothed,
-            previous_actions=env_state.previous_actions,
             weights=self._reward_weights,
             peg_length=self._peg_length,
             lift_target=self.reward_config.lift_target,
@@ -388,13 +335,6 @@ class ShadowHandPegMjxEnv(MjxVecEnv):
             place_k=self.reward_config.place_k,
         )
 
-        # No success terminal (2026-07-14, mirrors grasp): with a terminal,
-        # discounted-return math preferred hovering below the success
-        # threshold and farming shaping forever over completing (the audit's
-        # ~21/step vs one-shot ~125 comparison). Now the settled-in-bore peg
-        # is the highest-paying per-step state (depth + ungated complete),
-        # so inserting AND staying inserted is the optimum. is_success keeps
-        # the same criterion for logging/gates.
         insertion_complete = (
             insertion_depth > self.reward_config.success_threshold * self._peg_length
         ) & (new_reward_state.insertion_hold_steps >= self.reward_config.peg_hold_steps)
@@ -408,7 +348,6 @@ class ShadowHandPegMjxEnv(MjxVecEnv):
             smoothed_actions=smoothed,
             stage=new_stage,
             no_contact_grace=new_grace,
-            initial_peg_height=env_state.initial_peg_height,
             step_count=env_state.step_count + 1,
             key=env_state.key,
         )
@@ -432,10 +371,6 @@ class ShadowHandPegMjxEnv(MjxVecEnv):
             nm.peg_qvel_start,
         )
 
-        # The hole pose is fixed (hole_offset never randomized), so these four
-        # obs dims are constants the policy can memorize — acceptable for a
-        # single-station task; they become informative if/when the receptacle
-        # pose is randomized (Factory-style) for transfer.
         hole_pos = mjx_data.xpos[nm.hole_body_id]
         hole_quat = mjx_data.xquat[nm.hole_body_id]
 

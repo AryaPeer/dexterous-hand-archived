@@ -37,7 +37,6 @@ def grasp_reward(
     object_linear_velocity: jnp.ndarray,
     finger_contact_mask: jnp.ndarray,
     actions: jnp.ndarray,
-    previous_actions: jnp.ndarray,
     table_height: float,
     lift_target: float,
     hold_velocity_threshold: float,
@@ -54,8 +53,6 @@ def grasp_reward(
     action_penalty_scale: float = 2e-4,
     idle_grace_steps: int = 3,
 ) -> tuple[jnp.ndarray, GraspRewardState, dict[str, jnp.ndarray]]:
-    del previous_actions
-
     ft_weights = jnp.asarray(fingertip_weights)
 
     n_contacts = jnp.sum(finger_contact_mask).astype(jnp.float32)
@@ -67,13 +64,6 @@ def grasp_reward(
     weighted_dist = jnp.sum(ft_weights * dists) / jnp.sum(ft_weights)
     reaching = 1.0 - jnp.tanh(reach_tanh_k * weighted_dist)
 
-    # side_ratio: fraction of contacting fingers whose tip sits at or below the
-    # object's vertical midpoint (+ a 1.5cm slack). Matches the Apr-10 "working
-    # for everything except spheres" design — rewards any wrap-around, not just
-    # thumb-vs-fingers opposition. With the cube spawned in y ∈ [-0.05, +0.05]
-    # and the thumb sitting at y≈-0.087, the previous thumb-gated opposition
-    # term zeroed out on ~half the cube spawns. side_ratio gives partial credit
-    # for any palm/finger contact pattern that's actually wrapping.
     finger_z_below = finger_positions[:, 2] <= (object_position[2] + 0.015)
     side_count = jnp.sum(finger_contact_mask & finger_z_below).astype(jnp.float32)
     side_ratio = jnp.where(n_contacts > 0, side_count / jnp.maximum(n_contacts, 1.0), 0.0)
@@ -81,32 +71,14 @@ def grasp_reward(
     contact_scale = jnp.tanh(n_contacts / 2.0)
     grasping = contact_scale * (0.3 + 0.7 * side_ratio)
 
-    # Lift gate matches robosuite Lift / Apr-10 grasp: hard 2-contact gate, no
-    # contact_scale attenuation past it. Letting tanh(n/2) scale lifting made
-    # the policy converge to grasp-and-sit because each marginal contact above
-    # 2 still bought additional reward without needing to actually lift.
-    # Linear all the way to lift_target (Apr-10 shape); capped at 1.0 — beyond
-    # the target the holding term takes over, so there is no incentive to
-    # yo-yo the cube above the cap.
     lift_gate = (n_contacts >= 2).astype(jnp.float32)
     lifting = jnp.clip(lift_height / lift_target, 0.0, 1.0) * lift_gate
 
     obj_speed = jnp.linalg.norm(object_linear_velocity)
-    # height_gate is ~0 for a grasped-but-UNLIFTED cube and ramps to ~1 as the
-    # cube reaches lift_target. The previous formula added +0.04 inside the
-    # sigmoid, centering the gate at lift_height = -28mm, so it was ~80% active
-    # at zero lift and paid ~5.8/step (~1157 over a 200-step episode) to hold a
-    # SITTING cube — a direct grasp-and-sit subsidy the team fought for rounds.
-    # Centering at lift_target makes a sitting cube earn ~0 holding while a
-    # lifted-and-held cube still earns ~full (at lift_target=0.10, k=50 puts
-    # the at-rest gate at sigmoid(-5) = 0.7%).
     height_gate = _sigmoid(hold_height_k * (lift_height - lift_target))
     speed_gate = _sigmoid(hold_velocity_k * (hold_velocity_threshold - obj_speed))
     holding = height_gate * speed_gate * contact_scale
 
-    # The drop penalty arms once the cube has been meaningfully carried
-    # (drop_arm_height), not only at the full lift_target — otherwise a cube
-    # carried most of the way up and dumped is penalty-free.
     was_lifted_next = state.was_lifted | (lift_height >= drop_arm_height)
 
     just_dropped = state.was_lifted & (lift_height < 0.01)
@@ -121,12 +93,6 @@ def grasp_reward(
         at_target, state.success_hold_counter + 1, jnp.array(0, dtype=jnp.int32)
     )
     is_success = new_success_hold >= success_hold_steps
-    # Success pays PER-STEP while the hold condition is sustained (an annuity,
-    # matching the peg's `complete` term and Adroit relocate's per-step
-    # proximity bonuses). Dropping stops the payment, so cycling
-    # lift/hold/drop strictly loses income relative to steady holding — no
-    # latch is needed to block bonus farming, and there is no one-shot spike
-    # for VecNormalize's reward clipping to attenuate.
     success = jnp.where(is_success, success_bonus_per_step, 0.0)
 
     idle_active = n_contacts == 0
@@ -164,8 +130,6 @@ def grasp_reward(
         "reward/holding": holding,
         "reward/drop": drop,
         "reward/success": success,
-        # raw (pre-weight) like the other reward/* components, so the logged
-        # per-term curves are on a common scale; total applies weights.idle.
         "reward/idle_penalty": idle_raw,
         "reward/action_penalty": action_penalty,
         "reward/total": total,

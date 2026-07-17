@@ -1,54 +1,47 @@
-# RunPod sanity — round-14 (peg + grasp, 5M each)
+# RunPod sanity — peg + grasp (5M each)
 
-Round-13 confirmed that `norm_reward=True` fixed the value-function
-divergence (peg `value_loss` 0.30 vs round-12's 61,920) but introduced
-two new failures:
-
-- **Peg 67M (round-13)**: smooth `lift_step_bonus` ramp removed the
-  discontinuity that round-12 used to escape the grasp-and-sit basin.
-  Policy stuck at +43mm lift forever; `stage=1.17`, `idle_stage1_pen=
-  -0.073`. The smooth ramp was over-correction — `norm_reward=True`
-  already bounds value-function variance, so the binary step bonus was
-  safe to keep.
-- **Grasp 50M (round-13)**: `target_kl=0.02` plus adaptive LR throttled
-  learning rate to 5e-5 by 50M; `success_hold_steps` plateaued at 5.59
-  (slight improvement over round-12 peak but never climbing toward the
-  10/20 bar). LR collapse, not value-fn collapse.
-
-Round-14 changes (`dexterous_hand/rewards/peg_reward.py`,
-`scripts/training/train_{peg,grasp}.py`):
-
-1. **Revert `lift_step_bonus` to binary** in `peg_reward.py`:
-   `jnp.where(lift_height > 0.005, 1.0, 0.0)`. Round-12's original design.
-   With `norm_reward=True` keeping the value function bounded, the
-   discontinuity is no longer a problem.
-2. **Raise `target_kl` from 0.02 → 0.05** in both training scripts. The
-   0.02 bound was calibrated for unnormalized rewards; normalized rewards
-   give larger KL per update at the same learning rate, tripping the
-   adaptive-LR throttle prematurely.
+Short (5M-step) training runs that validate the learning signal before a
+full paid run. Everything a sanity needs to pass is checked for free
+first (pre-flight below); the sanity itself confirms the metrics move in
+the right direction under GPU/MJX at scale.
 
 ## Pre-flight (run BEFORE spending on a pod)
 
-Round-14 ships a free CPU-side reward-gradient check that catches the
-exact failure modes of rounds 11–13:
+Everything here is free and local:
 
 ```
-uv run python scripts/check_reward_gradient.py
+uv run ruff check . && uv run mypy dexterous_hand scripts main.py
+uv run pytest                                    # incl. slow winnability proofs
+uv run python scripts/check_reward_gradient.py   # expected: PEG: PASS / GRASP: PASS
+uv run python scripts/mjx_parity_check.py --backend cpu
+uv run python scripts/render_peg_transport.py    # watch: engage -> release -> bottom-out
+uv run python scripts/render_grasp_diagnostic.py # watch: grip forms, 10cm lift held
 ```
 
-Expected output: `PEG: PASS` and `GRASP: PASS`. If either fails, do not
-spend on a pod — the reward shape is broken. Gates checked:
+If anything fails, do not spend on a pod.
 
-- **Peg**: lifting 0mm → 6mm (just past `lift_step_threshold`) must
-  produce `delta_total ≥ 1.0` (catches missing step bonus) AND the lift
-  component must beat the static grasp reward at the same state (catches
-  round-11/13 grasp-and-sit basin).
-- **Grasp**: lifting 0mm → `lift_target` must produce `delta_total ≥ 5.0`
-  AND be monotonic through the intermediate 6mm range (catches any
-  reward shape where the gradient zeros out partway up).
+## Pod checklist (first ~30 min of GPU, before committing to full runs)
 
-~4.5 hr wallclock per task on a 4090 at 256 envs (~$3 each). Both can
-share a pod sequentially or run on two pods in parallel.
+1. Setup (section 2), JAX sees CUDA.
+2. `uv run pytest tests/test_grasp_env.py tests/test_peg_env.py` — the MJX
+   smoke tests that skip locally.
+3. `uv run python scripts/mjx_parity_check.py` — both engines; bars:
+   grasp lift >= 0.15, peg settle >= 0.73 / hold >= 0.70.
+4. Contact culling: measure max `ncon` over the parity trajectories + a
+   ~50k-step random rollout, set `mjx_max_geom_pairs` /
+   `mjx_max_contact_points` in `config.py` to ~2x the observed max,
+   re-run parity with the MJX backend. Culling too low silently drops
+   real contacts — the parity bars catch it as grip failure.
+5. Throughput: time a 200k-step `learn()` at 768/1536/3072 envs; pick
+   num_envs (scale `batch_size` to keep ~24-32 minibatches) and update
+   the cost math below.
+6. 5M sanity per task, then
+   `uv run python scripts/eval_policy.py --task {grasp,peg} ...` on the
+   5M checkpoint (deterministic success rate — exploration-rollout
+   `is_success` understates the policy).
+7. Write the 5M rollout means into the gate floors
+   (`GRASP_GATES`/`PEG_GATES` in `scripts/training/train_*.py`, baseline
+   column is NaN until then), then launch full runs with gates on.
 
 ## 1. Pod
 
@@ -175,7 +168,7 @@ territory regardless of how high raw rewards climb.
 | `train/value_loss`                | 469 → 61,920 (130×, climbing) | < 100, **flat or declining** by 3M   |
 | `train/explained_variance`        | 0.97 peak → 0.91 (declining)  | > 0.8 by 3M, **flat or rising**      |
 | `train/clip_fraction`             | 0.25 → 0.30 (climbing)        | < 0.25, flat                         |
-| `train/approx_kl`                 | 0.018 → 0.022                 | < target_kl=0.02 most epochs         |
+| `train/approx_kl`                 | 0.018 → 0.022                 | < target_kl=0.05 most epochs         |
 
 If `value_loss` is still climbing quadratically with reward magnitude at
 3M, `norm_reward=True` didn't take effect — check `VecNormalize` is

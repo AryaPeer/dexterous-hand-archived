@@ -1,25 +1,4 @@
-"""MJX <-> CPU-MuJoCo physics parity check.
-
-All local winnability proofs (tests/test_geometry.py, the render scripts) step
-the compiled models with classic C MuJoCo (`mj_step`), while training steps
-them with MJX (`mjx.step`) — two solvers over the same MjModel. This script
-replays the two scripted winning trajectories through BOTH engines and asserts
-the CPU-proven outcomes, converting the solver split from a doubt into a
-measurement. Run it on the pod (GPU JAX) before paying for a sanity run:
-
-    uv run python scripts/mjx_parity_check.py            # both engines
-    uv run python scripts/mjx_parity_check.py --backend cpu   # CPU only (local)
-
-Bars (from the CPU proofs, with margin):
-  grasp: seeded grip + slide_z lift -> final cube lift >= 0.15 m
-         (CPU-measured 0.236) with >= 2 touch-sensor contacts at the end
-  peg:   pre-grasped -> transport -> engage -> release -> settled insertion
-         fraction >= 0.73 (CPU-measured 0.757) and holding >= 0.70
-
-The peg trajectory also exercises the peg<->bore friction pairs and the
-fingertip touch sensors under MJX — both load-bearing for training.
-Trajectories are kept in sync with tests/test_geometry.py.
-"""
+"""MJX <-> CPU-MuJoCo physics parity check."""
 from __future__ import annotations
 
 import argparse
@@ -253,8 +232,6 @@ def run_peg(engine_cls) -> dict[str, float]:
     eng.set_state(qpos)
 
     grip = build_grip_ctrl(model)
-    # settle under grip ctrl (the env settles 5 raw steps; one frame_skip
-    # block = 20 raw steps is an equally-treated superset for both engines)
     eng.ctrl_step(grip, n=1)
 
     hole_pos = eng.xpos(nm.hole_body_id)
@@ -311,10 +288,6 @@ def run_peg(engine_cls) -> dict[str, float]:
     do_steps(15, open_fingers=True)
     state["z"] += 0.06
     do_steps(25, open_fingers=True)
-    # settle window: the released peg self-feeds to the bottom over ~3s (the
-    # fingers rest on the tube rim during engagement, so the peg enters
-    # tilted and creeps down at mu=0.2) — keep in sync with
-    # tests/test_geometry.py::test_peg_transport_release_insertion
     do_steps(75, open_fingers=True)
 
     settled = depth() / peg_len

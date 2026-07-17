@@ -56,11 +56,11 @@ For end-to-end RunPod recipes (setup, env vars, tmux, watcher, pass criteria), s
 
 ### Grasping
 
-Pick a cube off the table. Actuator set: 22 (X/Y slider + 20 hand joints), obs 105.
+Pick a cube off the table and hold it at height. Actuator set: 23 (X/Y/Z slider + 20 hand joints), obs 108.
 
 ### Peg-in-hole
 
-Grasp a peg, align with a hole, drive it in. Actuator set: 23 (X/Y/Z slider + 20 hand joints), obs 134. Z slider was added in round-10 because finger flexion alone couldn't lift the peg past ~4cm.
+Grasp a peg, transport it over an elevated guide tube, engage the tip, and release — gravity finishes the insertion. Actuator set: 23 (X/Y/Z slider + 20 hand joints), obs 134.
 
 ## Scope
 

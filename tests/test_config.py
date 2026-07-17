@@ -32,8 +32,6 @@ class TestConfigDefaults:
     def test_reward_config(self):
         c = RewardConfig()
         assert isinstance(c.weights, RewardWeights)
-        # 0.10 = a real, visible pick-up; guards against eroding the lift bar
-        # to match a broken scene instead of fixing the scene.
         assert c.lift_target == 0.10
         assert c.hold_height_smoothness_k == 50.0
         assert c.hold_velocity_smoothness_k == 100.0
@@ -68,8 +66,6 @@ class TestConfigDefaults:
         assert c.idle_stage0_penalty == -0.3
         assert c.weights.opposition == 1.0
         assert c.weights.axis_in_grip == 1.0
-        # place: keypoint shaping to the ENGAGED release pose (2026-07-14) —
-        # the only x/y gradient between lift saturation and in-bore depth.
         assert c.weights.place == 8.0
         assert c.release_height == -0.015
         assert c.lateral_gate_k == 5.0
@@ -87,9 +83,6 @@ class TestConfigDefaults:
             assert 0.0 <= p <= 1.0
 
     def test_mjx_log_std_clamp_defaults(self):
-        # Bounds must be valid (min < max) and the init must sit inside the
-        # range; the clamped Actor only blocks the runaway if the policy
-        # actually starts within the allowed range.
         for cls in (MjxGraspTrainConfig, MjxPegTrainConfig):
             c = cls()
             assert c.log_std_min < c.log_std_max
@@ -113,27 +106,15 @@ class TestConfigDefaults:
             assert obj is not None
 
     def test_removed_fields_stay_removed(self):
-        # guards against accidental re-introduction of audit-removed fields;
-        # each name was deleted in phase 4 (config dead-field cleanup). if
-        # anyone adds one back by copy-paste, this test will flag it.
         w = RewardWeights()
-        # opposition: removed — it paid side_ratio a second time on top of the
-        # grasping term (same quantity, two payments).
         for name in ("action", "upward", "opposition"):
             assert not hasattr(w, name), f"RewardWeights.{name} should be removed"
 
         c = RewardConfig()
-        # success_bonus: replaced by success_bonus_per_step — the one-shot +250
-        # spike was clipped by VecNormalize early in training and needed a
-        # latch to block yo-yo farming; the annuity needs neither.
         for name in ("hold_bonus", "success_bonus"):
             assert not hasattr(c, name), f"RewardConfig.{name} should be removed"
 
         pw = PegRewardWeights()
-        # insertion_drive: removed 2026-07-14 — it paid gated downward peg
-        # velocity with no matching charge on ascent, making a grip-and-bob
-        # cycle net-positive (a non-potential shaping term, Ng '99); the place
-        # keypoint term covers the same gradient without the loophole.
         for name in ("upward", "action_magnitude", "insertion_drive"):
             assert not hasattr(pw, name), f"PegRewardWeights.{name} should be removed"
 

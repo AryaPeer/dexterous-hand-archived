@@ -1,10 +1,4 @@
-"""Render the peg winning trajectory: pre-grasped -> raise -> transport ->
-engage tip in bore -> release -> peg slides to the bottom.
-
-This is the physical winnability demo for the 2026-07-14 endgame redesign
-(engaged release + bore friction pairs + place term). Keep the trajectory in
-sync with tests/test_geometry.py::test_peg_transport_release_insertion.
-"""
+"""Render the peg winning trajectory: pre-grasped -> raise -> transport ->"""
 from __future__ import annotations
 
 import argparse
@@ -108,10 +102,6 @@ def main() -> None:
     do_steps(15, open_fingers=True)
     z_cmd += 0.06
     do_steps(25, open_fingers=True)
-    # settle window: the released peg self-feeds to the bottom over ~3s
-    # (fingers rest on the tube rim during engagement, so the peg enters
-    # tilted and creeps down at mu=0.2) — keep in sync with
-    # tests/test_geometry.py::test_peg_transport_release_insertion
     do_steps(75, open_fingers=True)
 
     depth = float(

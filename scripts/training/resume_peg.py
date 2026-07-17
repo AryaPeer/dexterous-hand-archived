@@ -19,10 +19,6 @@ def train(args: SimpleNamespace) -> None:
     config.num_envs = args.num_envs
     config.seed = args.seed
 
-    # Curriculum scaling uses the *original* run's reference timesteps so stage
-    # advances continue at the same cumulative-step boundaries the original
-    # run was anchored to. reset_num_timesteps=False makes model.num_timesteps
-    # cumulative across the resume.
     curriculum_stages = scale_stage_starts(
         stages=config.curriculum_stages,
         total_timesteps=config.total_timesteps,

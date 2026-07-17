@@ -1,21 +1,4 @@
-"""
-Round-14 pre-flight: verify the reward gradient actually pushes the policy
-toward the right behavior at the operating point we care about.
-
-Both round-12 and round-13 cooked at full scale, and both failures were
-visible in the reward design at sanity-relevant lift heights. This script
-runs the production reward functions on synthetic states and asserts:
-
-  PEG: marginal reward gain from lifting 0 -> 5mm must exceed marginal
-       reward gain from improving grasp_quality. Otherwise the policy
-       converges to "perfect grip, no lift" and never escapes.
-
-  GRASP: marginal reward gain from lifting 0 -> 12mm (lift_target) must
-         exceed gain from reaching/grasping plateau. Same logic.
-
-If either check FAILS, the full run will fail at scale — kill any
-planned pod spend before clicking go.
-"""
+"""Pre-flight: verify the reward gradient pushes the policy toward the task."""
 
 import jax.numpy as jnp
 
@@ -27,10 +10,6 @@ from dexterous_hand.rewards.peg_reward import init_peg_reward_state, peg_reward
 def check_peg() -> bool:
     cfg = PegRewardConfig()
     scene = PegSceneConfig()
-    # Production geometry. Previously hardcoded pl=0.06/table_h=0.82, which did
-    # not match the real env (peg_length=0.076, table_height=0.4) and let the
-    # pre-flight pass against a phantom scene whose align/insertion gates were
-    # active where production's are gated off.
     pl = scene.peg_half_length * 2.0 + scene.peg_radius * 2.0  # 0.076
     table_h = scene.table_height  # 0.4
     hole_z = table_h + scene.hole_top_above_table  # hole entrance
@@ -80,9 +59,7 @@ def check_peg() -> bool:
                 contact_force_magnitude=jnp.asarray(0.0),
                 finger_contact_mask=mask,
                 peg_height=jnp.asarray(peg_z),
-                peg_linvel=jnp.zeros(3),
                 actions=jnp.zeros(23),
-                previous_actions=jnp.zeros(23),
                 weights=cfg.weights,
                 peg_length=pl,
                 lift_target=cfg.lift_target,
@@ -108,7 +85,7 @@ def check_peg() -> bool:
             )
         return info
 
-    print("\n=== PEG reward gradient (round-14) ===\n")
+    print("\n=== PEG reward gradient ===\n")
     info_sit = run(initial_z + 0.0)
     info_lift = run(initial_z + 0.006)  # just past lift_step_threshold = 5mm
 
@@ -132,10 +109,6 @@ def check_peg() -> bool:
     print(f"  grasp out-rewards lift?     = {grasp_post_weight > delta_total}")
     print()
 
-    # Bars:
-    # 1. Lifting must produce a meaningfully positive delta vs sitting.
-    # 2. That delta must exceed the grasp reward currently being banked
-    #    (otherwise sitting-with-perfect-grasp wins on a per-step basis).
     bar_delta = 1.0  # lift step bonus is +1.0 post-weight when threshold cleared
     pass_delta = delta_total >= bar_delta
     pass_lift_vs_grasp = delta_total > grasp_post_weight
@@ -143,19 +116,9 @@ def check_peg() -> bool:
     print(f"  GATE 1: delta_total >= {bar_delta}     {'PASS' if pass_delta else 'FAIL'}")
     print(f"  GATE 2: lifting beats grasp          {'PASS' if pass_lift_vs_grasp else 'FAIL'}")
 
-    # --- 2026-07-14: full winning-trajectory monotonicity + release dominance.
-    # States along the intended demo: gripped on table (at spawn radius) ->
-    # gripped lifted -> gripped at the release pose over the bore -> RELEASED,
-    # settled in the tube (fraction 0.757, no contacts). Each must out-pay the
-    # previous per-step, and the settled state must dominate BOTH the hover
-    # and the "grip the peg partially inserted just below threshold" farm
-    # state — with the old contact-gated complete + success terminal, farming
-    # beat completing and releasing forfeited the completion payment.
     spawn_r = scene.spawn_min_radius
     s_table = run(initial_z, peg_xy=(spawn_r, 0.0))
     s_lift = run(initial_z + 0.05, peg_xy=(spawn_r, 0.0), stage=2)
-    # the release pose is ENGAGED (tip -release_height inside the bore), so
-    # the gripped hover state carries the matching insertion depth
     hover_z = hole_z + cfg.release_height + pl / 2.0
     s_hover = run(hover_z, stage=3, insertion_depth=max(0.0, -cfg.release_height))
     settled_depth = scene.hole_depth - 0.0025  # peg resting on hole_bottom plate
@@ -214,7 +177,6 @@ def check_grasp() -> bool:
             object_linear_velocity=jnp.zeros(3),
             finger_contact_mask=jnp.array([True, True, True, True, True]),
             actions=jnp.zeros(23),
-            previous_actions=jnp.zeros(23),
             table_height=table_h,
             lift_target=cfg.lift_target,
             hold_velocity_threshold=cfg.hold_velocity_threshold,
@@ -232,7 +194,7 @@ def check_grasp() -> bool:
         )
         return info
 
-    print("\n=== GRASP reward gradient (round-14) ===\n")
+    print("\n=== GRASP reward gradient ===\n")
     info_sit = run(initial_z + 0.0)
     info_lift = run(initial_z + cfg.lift_target)  # at lift_target
 
@@ -255,12 +217,6 @@ def check_grasp() -> bool:
           f"{float(info_lift['reward/lifting']) - float(info_sit['reward/lifting']):>+8.4f}")
     print()
 
-    # Bars for grasp: PPO maximizes total, not components. So the gate
-    # is "lifting must produce a meaningful total-reward jump" — small
-    # per-step lift component is fine because lift pulls success/holding
-    # bonuses with it (they fire after lift_target is held). Also check
-    # monotonicity through the intermediate range to make sure the
-    # gradient is actually pushing up, not flat.
     intermediate = run(initial_z + cfg.lift_target * 0.5)
     monotonic = (
         float(info_sit["reward/total"])

@@ -1,17 +1,4 @@
-"""Deterministic-policy evaluation of a saved checkpoint.
-
-Training success rates come from EXPLORATION rollouts (sigma up to 1.0), so
-they understate what the learned mean policy can do. This script loads a
-checkpoint + its VecNormalize statistics, runs the policy with
-deterministic=True and observation noise off, and reports the success rate
-and the mean task metrics over N completed episodes — the number that should
-gate a "keep training / ship it / fix it" decision.
-
-Usage (pod, or CPU-jax for small -n):
-    uv run python scripts/eval_policy.py --task grasp \
-        --model-path runs/<run>/final_model.zip \
-        --vec-normalize-path runs/<run>/vec_normalize.pkl -n 64
-"""
+"""Deterministic-policy evaluation of a saved checkpoint."""
 
 import argparse
 from collections import defaultdict

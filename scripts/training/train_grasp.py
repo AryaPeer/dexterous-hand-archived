@@ -5,10 +5,6 @@ from dexterous_hand.config import MjxGraspTrainConfig
 from dexterous_hand.envs.grasp_env import ShadowHandGraspMjxEnv
 from scripts.training._common import run_training
 
-# Compute-saver gates. The floors are first-principles collapse bars with NaN
-# baselines until a fresh 5M sanity exists under the current scene (slide_z +
-# lift_target 0.10) — re-derive real floors from that sanity's rollout means.
-# info_key, floor, baseline, why:
 GRASP_GATES = [
     (
         10_000_000,

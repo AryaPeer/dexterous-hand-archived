@@ -13,13 +13,6 @@ tfd = tfp.distributions
 
 
 class ClampedActor(nn.Module):
-    # SBX `Actor` lets `log_std` drift unbounded. With a Box(-1, 1) action
-    # space and env-side `jnp.clip`, that lets PPO run away: tail samples
-    # clip to ±1, accumulate positive advantage, the PG term pushes
-    # log_std up, and KL approximation goes blind to the drift because
-    # σ dominates the denominator. Clamping at module-call time blocks it
-    # — gradient through `jnp.clip` is zero outside the range, so the
-    # parameter freezes at the bound rather than diverging.
 
     action_dim: int
     net_arch: Sequence[int]
@@ -77,9 +70,6 @@ class ClampedActor(nn.Module):
 
 
 def make_clamped_actor(log_std_min: float, log_std_max: float) -> type[nn.Module]:
-    # SBX's PPOPolicy doesn't forward arbitrary kwargs to `actor_class`, so
-    # the bounds must live on the class. Closure-capture them into a
-    # subclass with overridden field defaults.
     if log_std_min >= log_std_max:
         raise ValueError(
             f"log_std_min ({log_std_min}) must be < log_std_max ({log_std_max})"
