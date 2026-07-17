@@ -28,3 +28,6 @@ progress*.csv
 .env
 .env.*
 !.env.example
+
+# local working notes
+*.local.md

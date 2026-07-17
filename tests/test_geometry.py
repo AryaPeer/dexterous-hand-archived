@@ -392,6 +392,14 @@ def test_peg_transport_release_insertion():
     z_cmd += 0.06
     do_steps(25, open_fingers=True)
 
+    # With hand<->wall collision enabled, the finger proximal links rest on
+    # the tube rim during engagement (capping the tip at ~11mm inside the
+    # bore) and the released peg enters ~15deg tilted, self-feeding to the
+    # bottom under gravity at mu=0.2 over ~3s (measured: 0.638 at retract ->
+    # 0.757 converged after ~75 control steps). Give it that settle window —
+    # a policy has 20s per episode.
+    do_steps(75, open_fingers=True)
+
     frac = _measure_depth(cfg, model, data, nm) / peg_len
     assert frac >= rcfg.success_threshold + 0.03, (
         f"transport+engaged-release settles at fraction {frac:.3f} < "

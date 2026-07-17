@@ -311,6 +311,11 @@ def run_peg(engine_cls) -> dict[str, float]:
     do_steps(15, open_fingers=True)
     state["z"] += 0.06
     do_steps(25, open_fingers=True)
+    # settle window: the released peg self-feeds to the bottom over ~3s (the
+    # fingers rest on the tube rim during engagement, so the peg enters
+    # tilted and creeps down at mu=0.2) — keep in sync with
+    # tests/test_geometry.py::test_peg_transport_release_insertion
+    do_steps(75, open_fingers=True)
 
     settled = depth() / peg_len
     fracs = []

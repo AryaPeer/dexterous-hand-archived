@@ -199,13 +199,15 @@ class ShadowHandGraspMjxEnv(MjxVecEnv):
             hold_velocity_threshold=self.reward_config.hold_velocity_threshold,
             drop_penalty_value=self.reward_config.drop_penalty,
             no_contact_idle_penalty=self.reward_config.no_contact_idle_penalty,
-            success_bonus_value=self.reward_config.success_bonus,
+            success_bonus_per_step=self.reward_config.success_bonus_per_step,
             success_hold_steps=self.reward_config.success_hold_steps,
             weights=self._reward_weights,
             reach_tanh_k=self.reward_config.reach_tanh_k,
             hold_height_k=self.reward_config.hold_height_smoothness_k,
             hold_velocity_k=self.reward_config.hold_velocity_smoothness_k,
             fingertip_weights=self.reward_config.fingertip_weights,
+            drop_arm_height=self.reward_config.drop_arm_height,
+            action_penalty_scale=self.reward_config.action_penalty_scale,
             idle_grace_steps=self.reward_config.idle_grace_steps,
         )
 

@@ -376,6 +376,7 @@ class ShadowHandPegMjxEnv(MjxVecEnv):
             peg_hold_steps=self.reward_config.peg_hold_steps,
             reach_tanh_k=self.reward_config.reach_tanh_k,
             fingertip_weights=self.reward_config.fingertip_weights,
+            action_penalty_scale=self.reward_config.action_penalty_scale,
             depth_reward_scale=self.reward_config.depth_reward_scale,
             idle_grace_steps=self.reward_config.idle_grace_steps,
             release_height=self.reward_config.release_height,
@@ -426,6 +427,10 @@ class ShadowHandPegMjxEnv(MjxVecEnv):
             nm.peg_qvel_start,
         )
 
+        # The hole pose is fixed (hole_offset never randomized), so these four
+        # obs dims are constants the policy can memorize — acceptable for a
+        # single-station task; they become informative if/when the receptacle
+        # pose is randomized (Factory-style) for transfer.
         hole_pos = mjx_data.xpos[nm.hole_body_id]
         hole_quat = mjx_data.xquat[nm.hole_body_id]
 

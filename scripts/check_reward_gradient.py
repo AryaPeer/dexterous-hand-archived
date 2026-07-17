@@ -100,6 +100,7 @@ def check_peg() -> bool:
                 peg_hold_steps=cfg.peg_hold_steps,
                 reach_tanh_k=cfg.reach_tanh_k,
                 fingertip_weights=cfg.fingertip_weights,
+                action_penalty_scale=cfg.action_penalty_scale,
                 depth_reward_scale=cfg.depth_reward_scale,
                 idle_grace_steps=cfg.idle_grace_steps,
                 release_height=cfg.release_height,
@@ -219,13 +220,15 @@ def check_grasp() -> bool:
             hold_velocity_threshold=cfg.hold_velocity_threshold,
             drop_penalty_value=cfg.drop_penalty,
             no_contact_idle_penalty=cfg.no_contact_idle_penalty,
-            success_bonus_value=cfg.success_bonus,
+            success_bonus_per_step=cfg.success_bonus_per_step,
             success_hold_steps=cfg.success_hold_steps,
             weights=cfg.weights,
             reach_tanh_k=cfg.reach_tanh_k,
             hold_height_k=cfg.hold_height_smoothness_k,
             hold_velocity_k=cfg.hold_velocity_smoothness_k,
             fingertip_weights=cfg.fingertip_weights,
+            drop_arm_height=cfg.drop_arm_height,
+            action_penalty_scale=cfg.action_penalty_scale,
         )
         return info
 

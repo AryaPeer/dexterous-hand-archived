@@ -58,7 +58,8 @@ def peg_reward(
     success_threshold: float = 0.7,
     peg_hold_steps: int = 10,
     reach_tanh_k: float = 5.0,
-    fingertip_weights: tuple[float, float, float, float, float] = (2.5, 1.0, 1.0, 1.0, 1.0),
+    fingertip_weights: tuple[float, float, float, float, float] = (1.0, 1.0, 1.0, 1.0, 2.5),
+    action_penalty_scale: float = 2e-4,
     depth_reward_scale: float = 10.0,
     idle_grace_steps: int = 3,
     release_height: float = -0.015,
@@ -167,9 +168,12 @@ def peg_reward(
     # engaged tip is laterally guided and slides to the bottom on release.
     # The in-bore endgame is paid by depth+complete, not place. Ungated: its
     # max is the correct behavior and it pays pennies elsewhere.
+    # sign() would return 0 for an exactly horizontal peg, collapsing both
+    # keypoints onto the peg centre; use a two-valued sign instead.
     axis_dot_ph = jnp.dot(peg_axis, hole_axis)
-    tip = peg_position - peg_axis * jnp.sign(axis_dot_ph) * (peg_length / 2.0)
-    top = peg_position + peg_axis * jnp.sign(axis_dot_ph) * (peg_length / 2.0)
+    axis_sign = jnp.where(axis_dot_ph >= 0.0, 1.0, -1.0)
+    tip = peg_position - peg_axis * axis_sign * (peg_length / 2.0)
+    top = peg_position + peg_axis * axis_sign * (peg_length / 2.0)
     target_tip = hole_position + hole_axis * release_height
     target_top = target_tip + hole_axis * peg_length
     keypoint_dist = jnp.linalg.norm(tip - target_tip) + jnp.linalg.norm(top - target_top)
@@ -180,9 +184,10 @@ def peg_reward(
         state.insertion_hold_steps + 1,
         jnp.array(0, dtype=jnp.int32),
     )
-    # NO contact_scale here: the bore (12mm) cannot admit fingers, so the only
-    # physical way to reach success depth is to RELEASE the peg over the bore
-    # and let gravity finish (see config hole_top comment + the drop test).
+    # NO contact_scale here: the hand collides with the tube walls (see
+    # peg_scene_builder), so fingers physically cannot follow the peg to
+    # success depth — the only way to complete is to RELEASE the peg over the
+    # bore and let gravity finish (proven by the transport-release test).
     # Gating complete on contacts forfeited the entire completion payment at
     # the exact moment the policy did the right thing — the settled peg paid
     # ~0 while a gripped hover below threshold farmed shaping forever.
@@ -205,7 +210,7 @@ def peg_reward(
     drop = jnp.where(just_dropped, drop_penalty_value, 0.0)
     was_lifted = jnp.where(just_dropped, False, was_lifted_next)
 
-    action_penalty = -0.0002 * jnp.sum(actions**2)
+    action_penalty = -action_penalty_scale * jnp.sum(actions**2)
 
     # idle penalty only fires in early stages so the policy isn't punished mid-insertion
     idle_active = (n_contacts == 0) & (stage < idle_stage_cutoff)

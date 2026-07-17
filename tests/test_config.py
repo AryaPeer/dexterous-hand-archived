@@ -27,18 +27,21 @@ class TestConfigDefaults:
         assert w.grasping == 2.5
         assert w.lifting == 6.0
         assert w.holding == 6.0
-        assert w.opposition == 1.0
 
     def test_reward_config(self):
         c = RewardConfig()
         assert isinstance(c.weights, RewardWeights)
-        # 0.10 = real pick-up; guards against the round-11-13 erosion of the
-        # lift bar (0.1 -> 0.07 -> 0.04 -> 0.012) that redefined the task as a
-        # 12mm twitch instead of fixing the missing vertical arm DOF.
+        # 0.10 = a real, visible pick-up; guards against eroding the lift bar
+        # to match a broken scene instead of fixing the scene.
         assert c.lift_target == 0.10
         assert c.hold_height_smoothness_k == 50.0
-        assert c.hold_velocity_smoothness_k == 20.0
+        assert c.hold_velocity_smoothness_k == 100.0
         assert c.no_contact_idle_penalty == -0.08
+        # success pays per-step while held (annuity), never as a one-shot spike
+        assert c.success_bonus_per_step == 5.0
+        assert c.drop_arm_height == 0.04
+        # reach weighting emphasizes the thumb (site order [ff, mf, rf, lf, th])
+        assert c.fingertip_weights[4] == max(c.fingertip_weights)
 
     def test_peg_scene_config(self):
         c = PegSceneConfig()
@@ -113,11 +116,17 @@ class TestConfigDefaults:
         # each name was deleted in phase 4 (config dead-field cleanup). if
         # anyone adds one back by copy-paste, this test will flag it.
         w = RewardWeights()
-        for name in ("action", "upward"):
+        # opposition: removed — it paid side_ratio a second time on top of the
+        # grasping term (same quantity, two payments).
+        for name in ("action", "upward", "opposition"):
             assert not hasattr(w, name), f"RewardWeights.{name} should be removed"
 
         c = RewardConfig()
-        assert not hasattr(c, "hold_bonus"), "RewardConfig.hold_bonus should be removed"
+        # success_bonus: replaced by success_bonus_per_step — the one-shot +250
+        # spike was clipped by VecNormalize early in training and needed a
+        # latch to block yo-yo farming; the annuity needs neither.
+        for name in ("hold_bonus", "success_bonus"):
+            assert not hasattr(c, name), f"RewardConfig.{name} should be removed"
 
         pw = PegRewardWeights()
         # insertion_drive: removed 2026-07-14 — it paid gated downward peg

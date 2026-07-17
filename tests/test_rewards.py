@@ -29,13 +29,15 @@ def _grasp_kwargs(cfg: RewardConfig, table_height: float) -> dict:
         hold_velocity_threshold=cfg.hold_velocity_threshold,
         drop_penalty_value=cfg.drop_penalty,
         no_contact_idle_penalty=cfg.no_contact_idle_penalty,
-        success_bonus_value=cfg.success_bonus,
+        success_bonus_per_step=cfg.success_bonus_per_step,
         success_hold_steps=cfg.success_hold_steps,
         weights=cfg.weights,
         reach_tanh_k=cfg.reach_tanh_k,
         hold_height_k=cfg.hold_height_smoothness_k,
         hold_velocity_k=cfg.hold_velocity_smoothness_k,
         fingertip_weights=cfg.fingertip_weights,
+        drop_arm_height=cfg.drop_arm_height,
+        action_penalty_scale=cfg.action_penalty_scale,
     )
 
 class TestGraspJax:
@@ -67,13 +69,15 @@ class TestGraspJax:
                 hold_velocity_threshold=cfg.hold_velocity_threshold,
                 drop_penalty_value=cfg.drop_penalty,
                 no_contact_idle_penalty=cfg.no_contact_idle_penalty,
-                success_bonus_value=cfg.success_bonus,
+                success_bonus_per_step=cfg.success_bonus_per_step,
                 success_hold_steps=cfg.success_hold_steps,
                 weights=cfg.weights,
                 reach_tanh_k=cfg.reach_tanh_k,
                 hold_height_k=cfg.hold_height_smoothness_k,
                 hold_velocity_k=cfg.hold_velocity_smoothness_k,
                 fingertip_weights=cfg.fingertip_weights,
+                drop_arm_height=cfg.drop_arm_height,
+                action_penalty_scale=cfg.action_penalty_scale,
             )
 
         state = init_grasp_reward_state(0.4, 0.4)
@@ -119,12 +123,12 @@ class TestGraspJax:
 
         assert float(info["reward/drop"]) < 0.0
 
-    def test_success_bonus_fires_once_per_episode(self):
-        """Round-17 regression: the +250 success bonus must NOT re-arm after a
-        drop. The previous edge detector (was_success_prev=is_success) re-fired
-        it on every re-hold, so lift/hold-1s/drop cycling out-earned steady
-        holding by ~24% — the reward-optimal policy dropped the cube every
-        second."""
+    def test_success_annuity_pays_while_held(self):
+        """Success pays per-step while the hold condition is sustained and
+        stops the moment the cube is dropped. A lift/hold/drop cycle therefore
+        strictly loses income vs steady holding (it forfeits the payment
+        stream for success_hold_steps + the -20 drop penalty), so there is no
+        yo-yo farming exploit for a latch to patch."""
         cfg = RewardConfig()
         held = _grasp_kwargs(cfg, 0.4)
         # 3 contacts (default mask), at rest, lift_factor 1.0 -> at_target
@@ -135,24 +139,31 @@ class TestGraspJax:
 
         state = init_grasp_reward_state(0.436, 0.4)
         bonuses = []
-        for _ in range(cfg.success_hold_steps + 2):
+        for _ in range(cfg.success_hold_steps + 5):
             _, state, info = grasp_reward(state=state, **held)
             bonuses.append(float(info["reward/success"]))
-        assert sum(b > 0.0 for b in bonuses) == 1, "bonus must fire exactly once"
+        # nothing until the hold requirement is met, then the annuity every step
+        assert all(b == 0.0 for b in bonuses[: cfg.success_hold_steps - 1])
+        assert all(b == cfg.success_bonus_per_step for b in bonuses[cfg.success_hold_steps - 1 :])
 
-        for _ in range(3):
+        # dropping stops the payment immediately and charges the drop penalty
+        _, state, info = grasp_reward(state=state, **dropped)
+        assert float(info["reward/success"]) == 0.0
+        assert float(info["reward/drop"]) < 0.0
+        for _ in range(2):
             _, state, info = grasp_reward(state=state, **dropped)
             assert float(info["reward/success"]) == 0.0
 
+        # a re-hold has to re-earn the full hold window before payment resumes
         rehold_bonuses = []
         for _ in range(cfg.success_hold_steps + 5):
             _, state, info = grasp_reward(state=state, **held)
             rehold_bonuses.append(float(info["reward/success"]))
-        assert all(b == 0.0 for b in rehold_bonuses), (
-            "success bonus re-armed after a drop — yo-yo farming is back"
+        assert all(b == 0.0 for b in rehold_bonuses[: cfg.success_hold_steps - 1])
+        assert all(
+            b == cfg.success_bonus_per_step
+            for b in rehold_bonuses[cfg.success_hold_steps - 1 :]
         )
-        # the is_success FLAG must still report the re-achieved hold (logging
-        # and the success-rate metric are unaffected by the payment latch)
         assert float(info["is_success"]) == 1.0
 
 

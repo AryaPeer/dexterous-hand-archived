@@ -14,7 +14,6 @@ class GraspRewardState(NamedTuple):
     initial_height_above_table: jnp.ndarray
     idle_steps: jnp.ndarray
     success_hold_counter: jnp.ndarray
-    was_success_prev: jnp.ndarray
 
 
 def init_grasp_reward_state(
@@ -28,7 +27,6 @@ def init_grasp_reward_state(
         ),
         idle_steps=jnp.array(0, dtype=jnp.int32),
         success_hold_counter=jnp.array(0, dtype=jnp.int32),
-        was_success_prev=jnp.array(False),
     )
 
 
@@ -45,13 +43,15 @@ def grasp_reward(
     hold_velocity_threshold: float,
     drop_penalty_value: float,
     no_contact_idle_penalty: float,
-    success_bonus_value: float,
+    success_bonus_per_step: float,
     success_hold_steps: int,
     weights: RewardWeights,
     reach_tanh_k: float = 5.0,
     hold_height_k: float = 50.0,
     hold_velocity_k: float = 100.0,
-    fingertip_weights: tuple[float, float, float, float, float] = (2.5, 1.0, 1.0, 1.0, 1.0),
+    fingertip_weights: tuple[float, float, float, float, float] = (1.0, 1.0, 1.0, 1.0, 2.5),
+    drop_arm_height: float = 0.04,
+    action_penalty_scale: float = 2e-4,
     idle_grace_steps: int = 3,
 ) -> tuple[jnp.ndarray, GraspRewardState, dict[str, jnp.ndarray]]:
     del previous_actions
@@ -104,7 +104,10 @@ def grasp_reward(
     speed_gate = _sigmoid(hold_velocity_k * (hold_velocity_threshold - obj_speed))
     holding = height_gate * speed_gate * contact_scale
 
-    was_lifted_next = state.was_lifted | (lift_height >= lift_target)
+    # The drop penalty arms once the cube has been meaningfully carried
+    # (drop_arm_height), not only at the full lift_target — otherwise a cube
+    # carried most of the way up and dumped is penalty-free.
+    was_lifted_next = state.was_lifted | (lift_height >= drop_arm_height)
 
     just_dropped = state.was_lifted & (lift_height < 0.01)
     drop = jnp.where(just_dropped, drop_penalty_value, 0.0)
@@ -118,7 +121,13 @@ def grasp_reward(
         at_target, state.success_hold_counter + 1, jnp.array(0, dtype=jnp.int32)
     )
     is_success = new_success_hold >= success_hold_steps
-    success = jnp.where(is_success & ~state.was_success_prev, success_bonus_value, 0.0)
+    # Success pays PER-STEP while the hold condition is sustained (an annuity,
+    # matching the peg's `complete` term and Adroit relocate's per-step
+    # proximity bonuses). Dropping stops the payment, so cycling
+    # lift/hold/drop strictly loses income relative to steady holding — no
+    # latch is needed to block bonus farming, and there is no one-shot spike
+    # for VecNormalize's reward clipping to attenuate.
+    success = jnp.where(is_success, success_bonus_per_step, 0.0)
 
     idle_active = n_contacts == 0
     new_idle_steps = jnp.where(
@@ -127,12 +136,11 @@ def grasp_reward(
     idle_raw = jnp.where(new_idle_steps >= idle_grace_steps, no_contact_idle_penalty, 0.0)
     idle_penalty = weights.idle * idle_raw
 
-    action_penalty = -0.0002 * jnp.sum(actions**2)
+    action_penalty = -action_penalty_scale * jnp.sum(actions**2)
 
     total = (
         weights.reaching * reaching
         + weights.grasping * grasping
-        + weights.opposition * side_ratio
         + weights.lifting * lifting
         + weights.holding * holding
         + weights.drop * drop
@@ -146,15 +154,6 @@ def grasp_reward(
         initial_height_above_table=state.initial_height_above_table,
         idle_steps=new_idle_steps,
         success_hold_counter=new_success_hold,
-        # Sticky ONCE-PER-EPISODE latch. The previous edge detector
-        # (was_success_prev=is_success) re-armed the +250 after any drop, so
-        # lift/hold-1s/drop cycling out-earned steady holding by ~24% (the
-        # -20 drop penalty is 12x smaller than the re-armed bonus) — the
-        # reward-optimal policy dropped the cube every second. Published
-        # bonuses are once/capped (ManiSkill, robosuite); OpenAI's re-fires
-        # only because the goal CHANGES. Latched, a yo-yo cycle pays ~11/step
-        # vs ~13.8/step steady, so holding wins.
-        was_success_prev=state.was_success_prev | is_success,
     )
 
     info = {

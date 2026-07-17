@@ -32,10 +32,9 @@ class SceneConfig:
 
 @dataclass
 class RewardWeights:
-    # Proportions restored to the Apr-10 (215cfa0) design that produced real
-    # pickups: reaching is a hint, grasping is meaningful, lifting dominates,
-    # holding pays comparably to lifting so the policy holds at height instead
-    # of oscillating at the lift cap.
+    # Proportions: reaching is a hint, grasping is meaningful, lifting
+    # dominates, holding pays comparably to lifting so the policy holds at
+    # height instead of oscillating at the lift cap.
     reaching: float = 0.5
     grasping: float = 2.5
     lifting: float = 6.0
@@ -44,7 +43,6 @@ class RewardWeights:
     action_penalty: float = 1.0
     success: float = 1.0
     idle: float = 1.0
-    opposition: float = 1.0
 
 
 @dataclass
@@ -65,12 +63,32 @@ class RewardConfig:
     # last few cm of the lift. (k=200 was needed when lift_target was 0.012;
     # at 0.10 it would make the gate a step function.)
     hold_height_smoothness_k: float = 50.0
-    hold_velocity_smoothness_k: float = 20.0
-    fingertip_weights: tuple[float, float, float, float, float] = (2.5, 1.0, 1.0, 1.0, 1.0)
+    # Sharpness of the holding velocity-gate. At the 0.05 m/s threshold, k=100
+    # pays a perfectly still cube sigma(100*0.05) = 99.3% of the gate; k=20
+    # capped it at 73%, silently under-paying the exact behavior the term
+    # exists to reward.
+    hold_velocity_smoothness_k: float = 100.0
+    # Per-fingertip weights for the reaching distance, in fingertip-site order
+    # [ff, mf, rf, lf, th]: emphasize the THUMB (index 4) — thumb opposition
+    # is the binding constraint of the grip, so the reach shaping pulls it in
+    # hardest.
+    fingertip_weights: tuple[float, float, float, float, float] = (1.0, 1.0, 1.0, 1.0, 2.5)
     drop_penalty: float = -20.0
-    success_bonus: float = 250.0
-    # 25 steps = 1s of continuous at-height hold before the one-shot bonus.
+    # Per-step payment while the success condition holds (an annuity, like the
+    # peg's `complete`): dropping the cube strictly loses income, so there is
+    # no bonus-farming cycle to patch, and there is no one-shot spike for
+    # VecNormalize's reward clip to attenuate. Adroit relocate pays its
+    # proximity bonuses per-step the same way.
+    success_bonus_per_step: float = 5.0
+    # 25 steps = 1s of continuous at-height hold before the annuity starts.
     success_hold_steps: int = 25
+    # Height at which the drop penalty arms. Below this the cube was never
+    # meaningfully carried; above it, releasing (lift < 0.01) costs
+    # drop_penalty. Must sit above spawn jitter but well below lift_target,
+    # otherwise a cube carried to 9cm and dumped is penalty-free.
+    drop_arm_height: float = 0.04
+    # Quadratic action-magnitude penalty coefficient (applied to sum(a^2)).
+    action_penalty_scale: float = 2e-4
     no_contact_idle_penalty: float = -0.08
     idle_grace_steps: int = 3
 
@@ -140,17 +158,25 @@ class PegRewardConfig:
     success_threshold: float = 0.7
     peg_hold_steps: int = 10
     reach_tanh_k: float = 5.0
-    fingertip_weights: tuple[float, float, float, float, float] = (2.5, 1.0, 1.0, 1.0, 1.0)
+    # Per-fingertip weights for the reaching distance, in fingertip-site order
+    # [ff, mf, rf, lf, th]: emphasize the THUMB (index 4), matching the
+    # thumb-opposition grasp terms.
+    fingertip_weights: tuple[float, float, float, float, float] = (1.0, 1.0, 1.0, 1.0, 2.5)
+    # Quadratic action-magnitude penalty coefficient (applied to sum(a^2)).
+    action_penalty_scale: float = 2e-4
     # place-term shape: target tip height RELATIVE to the hole entrance
     # (negative = inside the bore), and the tanh sharpness on the summed
     # 2-keypoint distance. -0.015 targets the ENGAGED release pose: a peg
     # released with its tip above the entrance topples (measured: 7.6cm
     # capsule, 4mm-clearance bore -> ~6 deg self-alignment cone, every
     # scripted above-entrance release fell flat across the tube top), while
-    # a tip 1.5cm inside the bore is laterally guided and slides down —
-    # IndustReal's (Tang'23) engagement distinction. Fingers gripping the
-    # peg's midpoint are still ~2cm above the rim at this depth, so the
-    # engaged pose is reachable while gripped.
+    # a tip 1-2cm inside the bore is laterally guided and slides down —
+    # IndustReal's (Tang'23) engagement distinction. With hand<->wall
+    # collision on, the finger proximal links rest on the tube rim and cap
+    # the gripped tip depth at ~-0.011; the -0.015 target is deliberately
+    # just past that stop so the shaping keeps pulling the grip fully onto
+    # the rim (deeper engagement is what makes the release robust — shallow
+    # releases get kicked out by the opening fingers; measured).
     release_height: float = -0.015
     place_k: float = 4.0
 

@@ -166,6 +166,21 @@ def build_peg_scene(
     spec.attach(child_spec, site=mount_site, prefix="")
     spec.body("rh_forearm").quat = [0.0, 1.0, 0.0, 0.0]
 
+    # Hand<->wall collision. The hand XML's collision geoms are contype=1,
+    # conaffinity=0 (they collide with whatever has bit 0 in conaffinity:
+    # floor, table, peg — but never with each other). Adding bit 1 to their
+    # conaffinity makes the hole walls (contype=2) collide with them, which
+    # physically enforces the endgame this scene is designed around: fingers
+    # cannot follow a gripped peg into the bore, so the only way to reach
+    # success depth is to release the peg over the entrance. Without this,
+    # the reward-optimal policy keeps gripping with fingers ghosting through
+    # the walls and stacks grasp/lift annuities on top of `complete`.
+    # Hand<->hand stays off (no hand geom has contype bit 1) and
+    # hand<->table/floor/peg are unchanged.
+    for geom in spec.geoms:
+        if geom.contype == 1 and geom.conaffinity == 0:
+            geom.conaffinity = 2
+
     for body_name, site_name in zip(FINGERTIP_BODIES, FINGERTIP_SITE_NAMES, strict=True):
         body = spec.body(body_name)
         offset = FINGERTIP_OFFSETS[body_name]
@@ -247,11 +262,12 @@ def build_peg_scene(
 
     hole_x = config.hole_offset[0]
     hole_y = config.hole_offset[1]
-    # Round-16: lift hole body by hole_top_above_table so its entrance sits
-    # above the table top. Walls extend down by hole_depth; the lower portion
-    # passes through the table but contype/conaffinity bits keep wall/table
-    # non-colliding. Hand-wall collision is also disabled (hand contype=1 vs
-    # wall contype/aff=2), so the hand can grip a peg passing through the tube.
+    # The hole body is lifted by hole_top_above_table so its entrance sits
+    # above the table top, forming a guide tube the hand can reach without
+    # its knuckles bottoming out on the table. Walls extend down by
+    # hole_depth; the lower portion passes through the table but the
+    # contype/conaffinity bits keep wall<->table non-colliding. The hand DOES
+    # collide with the walls (see the conaffinity pass after attach).
     hole_z = config.table_height + config.hole_top_above_table
     hole_body = spec.worldbody.add_body(
         name="hole",
