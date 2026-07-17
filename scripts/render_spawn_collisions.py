@@ -43,7 +43,6 @@ def grasp_render(out_path: Path, n_spawns: int = 12, seed: int = 0) -> None:
 
     for i in range(n_spawns):
         qpos = init_qpos.copy()
-        # Mirror env reset post-fix: ±0.05 noise on rotational joints, 0 on sliders.
         hand_noise = rng.uniform(-0.05, 0.05, size=nm.hand_qpos_end - nm.hand_qpos_start)
         hand_noise[0:2] = 0.0
         qpos[nm.hand_qpos_start : nm.hand_qpos_end] += hand_noise
@@ -54,7 +53,6 @@ def grasp_render(out_path: Path, n_spawns: int = 12, seed: int = 0) -> None:
         data.qvel[:] = 0
         mujoco.mj_forward(model, data)
 
-        # measure penetration at spawn
         penetrating = 0
         for ci in range(data.ncon):
             c = data.contact[ci]
@@ -64,13 +62,11 @@ def grasp_render(out_path: Path, n_spawns: int = 12, seed: int = 0) -> None:
                 penetrating += 1
         slide_x = float(qpos[0])
         slide_y = float(qpos[1])
-        # freeze spawn for 15 frames
         renderer.update_scene(data, camera="track_cam")
         spawn_frame = renderer.render().copy()
         for _ in range(15):
             frames.append(spawn_frame)
 
-        # settle 35 frames at ctrl=settle_ctrl
         data.ctrl[: model.nu] = settle_ctrl
         for _k in range(35):
             for _ in range(cfg.frame_skip):
@@ -118,7 +114,6 @@ def peg_render(out_path: Path, n_spawns: int = 12, seed: int = 0, p_pre_grasped:
         pre_grasped = rng.uniform() < p_pre_grasped
         base = grip_qpos if pre_grasped else open_qpos
         qpos = base.copy()
-        # Mirror env reset post-fix: ±0.05 noise on rotational joints, 0 on sliders.
         hand_noise = rng.uniform(-0.05, 0.05, size=nm.hand_qpos_end - nm.hand_qpos_start)
         hand_noise[0:2] = 0.0
         qpos[nm.hand_qpos_start : nm.hand_qpos_end] += hand_noise

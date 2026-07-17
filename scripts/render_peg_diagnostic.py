@@ -23,15 +23,12 @@ def make_data(cfg: PegSceneConfig, seed: int = 0, pre_grasped: bool = False):
     qpos = data.qpos.copy()
     if pre_grasped:
         apply_flexion_bias(qpos, model, bias_map=GRIP_BIAS)
-        # peg spawn at grasp site for pre-grasped case
         grasp_site_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_SITE, "grasp_site")
         if grasp_site_id >= 0:
-            # we need data.site_xpos which requires forward kinematics first
             data.qpos[:] = qpos
             mujoco.mj_forward(model, data)
             gs = data.site_xpos[grasp_site_id]
             qpos[nm.peg_qpos_start : nm.peg_qpos_start + 3] = gs
-            # peg-axis upright (capsule axis is local-z by default)
             qpos[nm.peg_qpos_start + 3 : nm.peg_qpos_start + 7] = [1.0, 0.0, 0.0, 0.0]
     else:
         apply_flexion_bias(qpos, model)
@@ -57,7 +54,6 @@ def scripted_grip_and_lift(
 ) -> np.ndarray:
     """Open-loop: hold the closed-grip ctrl always; slowly slide_y to nudge peg."""
     ctrl = grip_ctrl.copy()
-    # at no point do we override slide_x/slide_y — let them stay at 0
     return ctrl
 
 
@@ -78,7 +74,6 @@ def scripted_reach_and_grip(
     if sy >= 0:
         ctrl[sy] = target_y
 
-    # ramp closure
     if step < 30:
         alpha = 0.0
     elif step < 80:
@@ -170,27 +165,23 @@ def main() -> None:
 
     results: list[tuple[str, dict[str, float]]] = []
 
-    # 1. current geometry + pre-grasped hold (curriculum stage 0)
     cfg1 = PegSceneConfig()
     out1 = args.out_dir / "peg_1_current_pregrasp.mp4"
     print(f"[1/4] current mount={cfg1.mount_height} + pre-grasped hold -> {out1}")
     r1 = render_episode(cfg1, "current_pregrasp", out1, mode="pregrasp_hold", steps=args.steps, seed=args.seed)
     results.append(("current+pregrasp_hold", r1))
 
-    # 2. current geometry + reach-and-grip
     out2 = args.out_dir / "peg_2_current_reach.mp4"
     print(f"[2/4] current mount + reach-and-grip -> {out2}")
     r2 = render_episode(cfg1, "current_reach", out2, mode="reach_and_grip", steps=args.steps, seed=args.seed)
     results.append(("current+reach_grip", r2))
 
-    # 3. lowered mount + pre-grasped
     cfg2 = PegSceneConfig(mount_height=0.78)
     out3 = args.out_dir / "peg_3_lowered_pregrasp.mp4"
     print(f"[3/4] mount=0.78 + pre-grasped hold -> {out3}")
     r3 = render_episode(cfg2, "lowered_pregrasp", out3, mode="pregrasp_hold", steps=args.steps, seed=args.seed)
     results.append(("mount=0.78+pregrasp_hold", r3))
 
-    # 4. lowered mount + reach-and-grip
     out4 = args.out_dir / "peg_4_lowered_reach.mp4"
     print(f"[4/4] mount=0.78 + reach-and-grip -> {out4}")
     r4 = render_episode(cfg2, "lowered_reach", out4, mode="reach_and_grip", steps=args.steps, seed=args.seed)

@@ -16,7 +16,6 @@ class TestConfigDefaults:
         assert c.mount_x == -0.10
         assert c.mount_y == 0.0
         assert c.mount_height == 0.78
-        # 0.005 x 8 = 25 Hz control (Playground-style MJX physics config)
         assert c.sim_timestep == 0.005
         assert c.frame_skip == 8
         assert c.solver_iterations == 8
@@ -36,10 +35,8 @@ class TestConfigDefaults:
         assert c.hold_height_smoothness_k == 50.0
         assert c.hold_velocity_smoothness_k == 100.0
         assert c.no_contact_idle_penalty == -0.08
-        # success pays per-step while held (annuity), never as a one-shot spike
         assert c.success_bonus_per_step == 5.0
         assert c.drop_arm_height == 0.04
-        # reach weighting emphasizes the thumb (site order [ff, mf, rf, lf, th])
         assert c.fingertip_weights[4] == max(c.fingertip_weights)
 
     def test_peg_scene_config(self):

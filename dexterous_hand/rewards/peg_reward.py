@@ -13,7 +13,6 @@ ALIGN_GATE_CENTER = 0.02
 ALIGN_GATE_K = 150.0
 COMPLETE_FRAC_K = 20.0
 COMPLETE_HOLD_SCALE = 2.0
-# quadratic wall-force penalty coefficient above force_threshold
 FORCE_PENALTY_SCALE = 0.01
 
 
@@ -74,7 +73,6 @@ def peg_reward(
     ft_weights = jnp.asarray(fingertip_weights)
     n_contacts = jnp.sum(finger_contact_mask).astype(jnp.float32)
 
-    # reach
     dists = jnp.linalg.norm(finger_positions - peg_position, axis=1)
     weighted_dist = jnp.sum(ft_weights * dists) / jnp.sum(ft_weights)
     reach = 1.0 - jnp.tanh(reach_tanh_k * weighted_dist)
@@ -115,7 +113,6 @@ def peg_reward(
     axis_align = jnp.abs(jnp.dot(peg_axis, hole_axis))
     axis_in_grip = axis_align * contact_scale
 
-    # align: gated on peg actually being above the table
     lateral_dist = jnp.linalg.norm(peg_position[:2] - hole_position[:2])
     lateral_factor_align = 1.0 - jnp.tanh(lateral_gate_k * lateral_dist)
     peg_clearance = jnp.maximum(peg_height - table_height - peg_length * 0.5, 0.0)
@@ -157,7 +154,6 @@ def peg_reward(
 
     action_penalty = -action_penalty_scale * jnp.sum(actions**2)
 
-    # idle penalty only fires in early stages so the policy isn't punished mid-insertion
     idle_active = (n_contacts == 0) & (stage < idle_stage_cutoff)
     new_idle_steps = jnp.where(
         idle_active, state.idle_steps + 1, jnp.array(0, dtype=jnp.int32)

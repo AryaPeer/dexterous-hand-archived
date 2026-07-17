@@ -41,7 +41,7 @@ def main() -> None:
     load_saved_config(config, model_path)
     config.num_envs = args.num_envs
     config.seed = args.seed
-    config.obs_noise_std = 0.0  # evaluation measures the policy, not its noise robustness
+    config.obs_noise_std = 0.0
 
     env: Any = env_cls.from_config(config)
     env = VecMonitor(env)

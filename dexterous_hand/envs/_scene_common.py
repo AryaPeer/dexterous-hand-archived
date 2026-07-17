@@ -9,7 +9,6 @@ import numpy as np
 
 ASSETS_DIR = Path(__file__).resolve().parent.parent.parent / "assets" / "shadow_hand"
 
-# Distal-link body names: first/middle/ring/little/thumb
 FINGERTIP_BODIES = [
     "rh_ffdistal",
     "rh_mfdistal",
@@ -31,7 +30,6 @@ FINGERTIP_OFFSETS: dict[str, list[float]] = {
 FINGER_BODY_PREFIXES = ["rh_ff", "rh_mf", "rh_rf", "rh_lf", "rh_th"]
 FINGER_TOUCH_SITE_NAMES = ["ff_touch", "mf_touch", "rf_touch", "lf_touch", "th_touch"]
 
-# Pre-curl applied at reset for table-top tasks (no object pre-grip)
 TABLE_TASK_FLEXION_BIAS: dict[str, float] = {
     "rh_FFJ3": 1.2,
     "rh_MFJ3": 1.2,
@@ -46,7 +44,6 @@ TABLE_TASK_FLEXION_BIAS: dict[str, float] = {
 }
 
 
-# Heavier pre-curl used when an object is teleported into the closed grip
 GRIP_BIAS: dict[str, float] = {
     "rh_FFJ3": 1.5,
     "rh_MFJ3": 1.5,
@@ -133,7 +130,6 @@ def init_spec_options(spec: mujoco.MjSpec, config) -> None:
     spec.option.iterations = config.solver_iterations
     spec.option.ls_iterations = config.ls_iterations
     spec.option.integrator = mujoco.mjtIntegrator.mjINT_IMPLICITFAST
-    # MJX contact-culling numerics (ignored by CPU MuJoCo) — see config.
     if config.mjx_max_geom_pairs is not None:
         spec.add_numeric(name="max_geom_pairs", data=[float(config.mjx_max_geom_pairs)])
     if config.mjx_max_contact_points is not None:
@@ -272,7 +268,6 @@ def add_fingertip_sites_and_sensors(spec: mujoco.MjSpec) -> None:
             rgba=[1.0, 0.0, 0.0, 1.0],
         )
 
-    # touch sensor sites: spheres co-located with the fingertip
     for body_name, touch_site in zip(FINGERTIP_BODIES, FINGER_TOUCH_SITE_NAMES, strict=True):
         body = spec.body(body_name)
         offset = FINGERTIP_OFFSETS[body_name]

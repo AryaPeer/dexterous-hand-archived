@@ -11,7 +11,6 @@ from scripts.training._common import load_saved_config, run_resume
 def train(args: SimpleNamespace) -> None:
     config = MjxGraspTrainConfig()
     load_saved_config(config, Path(args.model_path).expanduser().resolve())
-    # CLI always wins for the resume-time knobs
     config.num_envs = args.num_envs
     config.seed = args.seed
 

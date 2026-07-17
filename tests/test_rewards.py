@@ -123,7 +123,6 @@ class TestGraspJax:
         """Success pays per-step while the hold condition is sustained and"""
         cfg = RewardConfig()
         held = _grasp_kwargs(cfg, 0.4)
-        # 3 contacts (default mask), at rest, lift_factor 1.0 -> at_target
         held["object_position"] = jnp.array([0.0, 0.0, 0.55])
         dropped = _grasp_kwargs(cfg, 0.4)
         dropped["object_position"] = jnp.array([0.0, 0.0, 0.436])
@@ -134,11 +133,9 @@ class TestGraspJax:
         for _ in range(cfg.success_hold_steps + 5):
             _, state, info = grasp_reward(state=state, **held)
             bonuses.append(float(info["reward/success"]))
-        # nothing until the hold requirement is met, then the annuity every step
         assert all(b == 0.0 for b in bonuses[: cfg.success_hold_steps - 1])
         assert all(b == cfg.success_bonus_per_step for b in bonuses[cfg.success_hold_steps - 1 :])
 
-        # dropping stops the payment immediately and charges the drop penalty
         _, state, info = grasp_reward(state=state, **dropped)
         assert float(info["reward/success"]) == 0.0
         assert float(info["reward/drop"]) < 0.0
@@ -146,7 +143,6 @@ class TestGraspJax:
             _, state, info = grasp_reward(state=state, **dropped)
             assert float(info["reward/success"]) == 0.0
 
-        # a re-hold has to re-earn the full hold window before payment resumes
         rehold_bonuses = []
         for _ in range(cfg.success_hold_steps + 5):
             _, state, info = grasp_reward(state=state, **held)
@@ -311,9 +307,9 @@ class TestPegJax:
         kw = self._kw()
         state = init_peg_reward_state(0.85)
         state = state._replace(was_lifted=jnp.array(True))
-        kw["peg_position"] = jnp.array([0.0, 0.0, 0.855])  # lift_height ~0.005
+        kw["peg_position"] = jnp.array([0.0, 0.0, 0.855])
         kw["peg_height"] = jnp.asarray(0.855)
-        kw["insertion_depth"] = jnp.asarray(0.045)  # fraction 0.75
+        kw["insertion_depth"] = jnp.asarray(0.045)
         kw["finger_contact_mask"] = jnp.array([False] * 5)
         _, _, info = peg_reward(state=state, **kw)
         assert float(info["reward/drop"]) == 0.0
@@ -321,11 +317,10 @@ class TestPegJax:
     def test_complete_below_threshold_stays_small(self):
         cfg = PegRewardConfig()
         kw = self._kw()
-        kw["insertion_depth"] = jnp.asarray(0.03)  # frac=0.5 < 0.7
+        kw["insertion_depth"] = jnp.asarray(0.03)
         state = init_peg_reward_state(0.85)
         for _ in range(20):
             _, state, info = peg_reward(state=state, **kw)
-        # sigmoid(20*(0.5-0.7)) = sigmoid(-4) ≈ 0.018; bound check
         assert float(info["reward/complete"]) < 0.05 * cfg.complete_bonus
 
     def test_depth_reward_clamped(self):

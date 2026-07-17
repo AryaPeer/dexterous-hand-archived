@@ -1,7 +1,6 @@
 import mujoco
 
-# MuJoCo joint type -> qpos/dof dimensions
-JOINT_QPOS_SIZE = {0: 7, 1: 4, 2: 1, 3: 1}  # free, ball, slide, hinge
+JOINT_QPOS_SIZE = {0: 7, 1: 4, 2: 1, 3: 1}
 JOINT_DOF_SIZE = {0: 6, 1: 3, 2: 1, 3: 1}
 
 

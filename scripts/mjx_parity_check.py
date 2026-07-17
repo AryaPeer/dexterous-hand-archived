@@ -23,7 +23,6 @@ PEG_SETTLE_BAR = 0.73
 PEG_HOLD_BAR = 0.70
 
 
-# --- engines -----------------------------------------------------------------
 
 
 class CpuEngine:
@@ -123,7 +122,6 @@ class MjxEngine:
         return np.asarray(self.data.sensordata)
 
 
-# --- shared helpers ----------------------------------------------------------
 
 
 def _act(model: mujoco.MjModel, name: str) -> int:
@@ -144,7 +142,6 @@ def _set_qpos_joint(model: mujoco.MjModel, qpos: np.ndarray, name: str, val: flo
     qpos[model.jnt_qposadr[jid]] = float(np.clip(val, lo, hi))
 
 
-# --- grasp trajectory (sync: tests/test_geometry.py CUBE_GRIP_SEED) ----------
 
 CUBE_GRIP_SEED = {
     "sx": 0.115, "sy": -0.017, "z0": -0.02,
@@ -192,12 +189,12 @@ def run_grasp(engine_cls) -> dict[str, float]:
         _set_ctrl(model, ctrl, "rh_A_THJ1", p["th1"] + squeeze)
         return ctrl
 
-    for step in range(30):  # settle
+    for step in range(30):
         eng.ctrl_step(grip_ctrl(p["squeeze"] * min(step / 10.0, 1.0), p["z0"]))
-    for step in range(40):  # lift
+    for step in range(40):
         t = step / 40.0
         eng.ctrl_step(grip_ctrl(p["squeeze"], p["z0"] + (0.18 - p["z0"]) * t))
-    for _ in range(80):  # hold
+    for _ in range(80):
         eng.ctrl_step(grip_ctrl(p["squeeze"], 0.18))
 
     final_lift = float(eng.xpos(nm.object_body_id)[2] - obj_z0)
@@ -206,7 +203,6 @@ def run_grasp(engine_cls) -> dict[str, float]:
     return {"final_lift": final_lift, "nfc_end": float(nfc)}
 
 
-# --- peg trajectory (sync: tests/test_geometry.py transport test) ------------
 
 
 def run_peg(engine_cls) -> dict[str, float]:
@@ -298,7 +294,6 @@ def run_peg(engine_cls) -> dict[str, float]:
     return {"settled_frac": settled, "min_hold_frac": float(np.min(fracs))}
 
 
-# --- main ---------------------------------------------------------------------
 
 
 def main() -> None:

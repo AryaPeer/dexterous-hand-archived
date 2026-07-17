@@ -24,7 +24,7 @@ def grasp_sample(rng: np.random.Generator, n: int = 256) -> dict:
     gt, gs = OBJECT_TYPES["large_cube"]
     half_h = get_object_half_height(gt, gs)
     obj_z = cfg.table_height + half_h + 0.001
-    settle_ctrl = build_grip_ctrl(model, bias_map={})  # no grip during settle for grasp
+    settle_ctrl = build_grip_ctrl(model, bias_map={})
 
     init_qpos = data.qpos.copy()
     apply_flexion_bias(init_qpos, model)
@@ -33,7 +33,6 @@ def grasp_sample(rng: np.random.Generator, n: int = 256) -> dict:
     overlap_count = 0
     for _i in range(n):
         qpos = init_qpos.copy()
-        # Mirror env reset: ±0.05 noise on rotational joints, 0 on sliders.
         hand_noise = rng.uniform(-0.05, 0.05, size=nm.hand_qpos_end - nm.hand_qpos_start)
         hand_noise[0:2] = 0.0
         qpos[nm.hand_qpos_start : nm.hand_qpos_end] += hand_noise
@@ -44,14 +43,12 @@ def grasp_sample(rng: np.random.Generator, n: int = 256) -> dict:
         data.qvel[:] = 0
         mujoco.mj_forward(model, data)
 
-        # min finger-cube center distance
         obj_pos = np.array([ox, oy, obj_z])
         ft = np.stack([data.site_xpos[sid] for sid in nm.fingertip_site_ids])
         dists = np.linalg.norm(ft - obj_pos[None, :], axis=1)
         min_dist = float(dists.min())
         min_idx = int(dists.argmin())
 
-        # count any hand geom currently in penetration with cube
         cube_g = nm.object_geom_id
         hand_geoms: set[int] = set()
         for gset in nm.finger_geom_ids_per_finger:
@@ -61,12 +58,11 @@ def grasp_sample(rng: np.random.Generator, n: int = 256) -> dict:
             c = data.contact[ci]
             if ((c.geom1 == cube_g and c.geom2 in hand_geoms) or (
                 c.geom2 == cube_g and c.geom1 in hand_geoms
-            )) and c.dist < -1e-4:  # actual interpenetration
+            )) and c.dist < -1e-4:
                 penetrating += 1
         if penetrating > 0:
             overlap_count += 1
 
-        # settle 5 steps with no-grip ctrl
         data.ctrl[: model.nu] = settle_ctrl
         for _ in range(5):
             mujoco.mj_step(model, data)
@@ -104,7 +100,7 @@ def peg_sample(rng: np.random.Generator, n: int = 256, p_pre_grasped: float = 0.
     apply_flexion_bias(grip_bias_qpos, model, bias_map=GRIP_BIAS)
     open_bias_qpos = data.qpos.copy()
     apply_flexion_bias(open_bias_qpos, model)
-    settle_ctrl = build_grip_ctrl(model)  # closed grip ctrl
+    settle_ctrl = build_grip_ctrl(model)
 
     peg_z_table = cfg.table_height + cfg.peg_half_length + cfg.peg_radius + 0.001
     grasp_site_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_SITE, "grasp_site")
@@ -116,13 +112,11 @@ def peg_sample(rng: np.random.Generator, n: int = 256, p_pre_grasped: float = 0.
         base_qpos = grip_bias_qpos.copy() if pre_grasped else open_bias_qpos.copy()
 
         qpos = base_qpos.copy()
-        # Mirror env reset: ±0.05 noise on rotational joints, 0 on sliders.
         hand_noise = rng.uniform(-0.05, 0.05, size=nm.hand_qpos_end - nm.hand_qpos_start)
         hand_noise[0:2] = 0.0
         qpos[nm.hand_qpos_start : nm.hand_qpos_end] += hand_noise
 
         if pre_grasped:
-            # need forward kinematics to find grasp_site, peg gets placed there
             data.qpos[:] = qpos
             mujoco.mj_forward(model, data)
             gs = data.site_xpos[grasp_site_id].copy()

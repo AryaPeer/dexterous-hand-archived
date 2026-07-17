@@ -10,10 +10,9 @@ from dexterous_hand.rewards.peg_reward import init_peg_reward_state, peg_reward
 def check_peg() -> bool:
     cfg = PegRewardConfig()
     scene = PegSceneConfig()
-    pl = scene.peg_half_length * 2.0 + scene.peg_radius * 2.0  # 0.076
-    table_h = scene.table_height  # 0.4
-    hole_z = table_h + scene.hole_top_above_table  # hole entrance
-    # On-table grasp height: the grasp-and-sit operating point we must escape.
+    pl = scene.peg_half_length * 2.0 + scene.peg_radius * 2.0
+    table_h = scene.table_height
+    hole_z = table_h + scene.hole_top_above_table
     initial_z = table_h + scene.peg_half_length + scene.peg_radius + 0.001
 
     def run(
@@ -30,7 +29,6 @@ def check_peg() -> bool:
         state = init_peg_reward_state(initial_z)
         px, py = peg_xy
         if gripped:
-            # 5 fingers actively contacting the peg with thumb opposition
             fp = jnp.array(
                 [
                     [px + 0.005, py, peg_z],
@@ -42,7 +40,6 @@ def check_peg() -> bool:
             )
             mask = jnp.array([True, True, True, True, True])
         else:
-            # released: hand hovering above, no contacts
             fp = jnp.tile(jnp.array([px, py, peg_z + 0.08]), (5, 1))
             mask = jnp.array([False] * 5)
         info: dict = {}
@@ -87,7 +84,7 @@ def check_peg() -> bool:
 
     print("\n=== PEG reward gradient ===\n")
     info_sit = run(initial_z + 0.0)
-    info_lift = run(initial_z + 0.006)  # just past lift_step_threshold = 5mm
+    info_lift = run(initial_z + 0.006)
 
     total_sit = float(info_sit["reward/total"])
     total_lift = float(info_lift["reward/total"])
@@ -109,7 +106,7 @@ def check_peg() -> bool:
     print(f"  grasp out-rewards lift?     = {grasp_post_weight > delta_total}")
     print()
 
-    bar_delta = 1.0  # lift step bonus is +1.0 post-weight when threshold cleared
+    bar_delta = 1.0
     pass_delta = delta_total >= bar_delta
     pass_lift_vs_grasp = delta_total > grasp_post_weight
 
@@ -121,7 +118,7 @@ def check_peg() -> bool:
     s_lift = run(initial_z + 0.05, peg_xy=(spawn_r, 0.0), stage=2)
     hover_z = hole_z + cfg.release_height + pl / 2.0
     s_hover = run(hover_z, stage=3, insertion_depth=max(0.0, -cfg.release_height))
-    settled_depth = scene.hole_depth - 0.0025  # peg resting on hole_bottom plate
+    settled_depth = scene.hole_depth - 0.0025
     s_settled = run(
         hole_z - settled_depth + pl / 2.0,
         gripped=False,
@@ -129,7 +126,7 @@ def check_peg() -> bool:
         stage=3,
         steady_steps=30,
     )
-    farm_depth = 0.69 * pl  # gripped just below success_threshold=0.7
+    farm_depth = 0.69 * pl
     s_farm = run(hole_z - farm_depth + pl / 2.0, insertion_depth=farm_depth,
                  stage=3, steady_steps=30)
 
@@ -157,7 +154,7 @@ def check_peg() -> bool:
 def check_grasp() -> bool:
     cfg = RewardConfig()
     table_h = 0.4
-    initial_z = 0.43  # just above table
+    initial_z = 0.43
 
     def run(obj_z: float) -> dict:
         state = init_grasp_reward_state(initial_z, table_h)
@@ -196,7 +193,7 @@ def check_grasp() -> bool:
 
     print("\n=== GRASP reward gradient ===\n")
     info_sit = run(initial_z + 0.0)
-    info_lift = run(initial_z + cfg.lift_target)  # at lift_target
+    info_lift = run(initial_z + cfg.lift_target)
 
     total_sit = float(info_sit["reward/total"])
     total_lift = float(info_lift["reward/total"])
@@ -224,7 +221,7 @@ def check_grasp() -> bool:
         < float(info_lift["reward/total"])
     )
 
-    bar_delta = 5.0  # grasp at lift_target should clear sitting by at least this much
+    bar_delta = 5.0
     pass_delta = delta_total >= bar_delta
 
     print(f"  GATE 1: delta_total >= {bar_delta}             {'PASS' if pass_delta else 'FAIL'}")

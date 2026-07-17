@@ -28,7 +28,6 @@ def main() -> None:
     model, data, nm = build_peg_scene(cfg)
     peg_len = cfg.peg_half_length * 2.0 + cfg.peg_radius * 2.0
 
-    # env-identical pre-grasped reset
     qpos = data.qpos.copy()
     apply_flexion_bias(qpos, model, bias_map=GRIP_BIAS)
     data.qpos[:] = qpos

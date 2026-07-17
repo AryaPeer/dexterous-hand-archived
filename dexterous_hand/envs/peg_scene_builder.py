@@ -61,7 +61,6 @@ def build_peg_scene(
     attach_hand(spec, mount_site, collide_with_walls=True)
     add_fingertip_sites_and_sensors(spec)
 
-    # per-wall touch sensors so the reward can read individual hole-wall forces
     for wall_name in WALL_SENSOR_NAMES:
         spec.add_sensor(
             name=f"sensor_force_{wall_name}",

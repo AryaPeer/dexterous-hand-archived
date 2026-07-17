@@ -92,7 +92,6 @@ def render_grip_lift(
     cfg: SceneConfig, cube_xy: tuple[float, float], out_path: Path
 ) -> dict[str, float]:
     model, data, nm = build_scene(cfg)
-    # shift the grip seed's slides with the cube (seed was measured at x=0.075)
     p = dict(CUBE_GRIP_SEED)
     p["sx"] = CUBE_GRIP_SEED["sx"] + (cube_xy[0] - 0.075)
     p["sy"] = CUBE_GRIP_SEED["sy"] + cube_xy[1]

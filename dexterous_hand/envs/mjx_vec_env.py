@@ -135,7 +135,6 @@ class MjxVecEnv(VecEnv):
         return jax.vmap(self._sample_dr_params_single)(keys)
 
     def _noisy_obs(self, obs: jax.Array) -> np.ndarray:
-        # np.array (not np.asarray) — asarray returns a read-only view of the JAX device buffer.
         if self._obs_noise_std <= 0.0:
             return np.array(obs)
         self._obs_noise_key, subkey = jax.random.split(self._obs_noise_key)
@@ -179,7 +178,6 @@ class MjxVecEnv(VecEnv):
         self._step_count = self._step_count + 1
         timed_out = self._step_count >= self._max_episode_steps
 
-        # NaN guard: blown-up envs would poison the policy via reward grads — reset and zero them.
         bad = jnp.any(jnp.isnan(new_data.qpos), axis=1) | jnp.any(jnp.isnan(obs), axis=1)
         rewards = jnp.where(bad, 0.0, jnp.where(jnp.isnan(rewards), 0.0, rewards))
         obs = jnp.where(bad[:, None], 0.0, jnp.nan_to_num(obs, nan=0.0))
@@ -200,7 +198,6 @@ class MjxVecEnv(VecEnv):
 
             reset_data, reset_state = self._batched_reset(self._mjx_model, new_data, self._env_keys)
 
-            # resample DR multipliers only for the envs being reset — others keep theirs.
             self._dr_key, dr_subkey = jax.random.split(self._dr_key)
             reset_dr = self._sample_dr_params_batch(dr_subkey)
             self._dr_params_batch = jax.tree.map(

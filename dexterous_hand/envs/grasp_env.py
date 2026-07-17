@@ -99,7 +99,6 @@ class ShadowHandGraspMjxEnv(MjxVecEnv):
         nm = self._nm
         k1, k2, k3 = jax.random.split(key, 3)
 
-        # hand pose
         qpos = self._init_qpos
 
         hand_qpos = qpos[nm.hand_qpos_start : nm.hand_qpos_end]
@@ -144,21 +143,17 @@ class ShadowHandGraspMjxEnv(MjxVecEnv):
         nm = self._nm
         action = jnp.clip(action, -1.0, 1.0)
 
-        # action smoothing
         alpha = self.scene_config.action_smoothing_alpha
         smoothed = (1.0 - alpha) * env_state.smoothed_actions + alpha * action
 
-        # remap [-1, 1] -> actuator ctrlrange
         ctrl = self._ctrl_low + (smoothed + 1.0) / 2.0 * (self._ctrl_high - self._ctrl_low)
         mjx_data = mjx_data.replace(ctrl=ctrl)
 
-        # frame_skip mjx steps
         def _substep(data: Any, _: Any) -> tuple[Any, None]:
             return mjx.step(mjx_model, data), None
 
         mjx_data, _ = jax.lax.scan(_substep, mjx_data, None, length=self.scene_config.frame_skip)
 
-        # reward inputs
         finger_pos = get_fingertip_positions_jax(mjx_data.site_xpos, self._fingertip_site_ids)
         obj_pos, obj_quat, obj_linvel, obj_angvel = get_object_state_jax(
             mjx_data.qpos,
@@ -171,7 +166,6 @@ class ShadowHandGraspMjxEnv(MjxVecEnv):
 
         _, contact_mask = get_finger_touch_from_sensors(mjx_data.sensordata, self._finger_touch_adr)
 
-        # reward
         total, new_reward_state, info = grasp_reward(
             state=env_state.reward_state,
             finger_positions=finger_pos,

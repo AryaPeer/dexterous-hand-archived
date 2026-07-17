@@ -124,6 +124,6 @@ def get_object_half_height(geom_type: int, geom_size: list[float]) -> float:
     elif geom_type == mujoco.mjtGeom.mjGEOM_SPHERE:
         return geom_size[0]
     elif geom_type == mujoco.mjtGeom.mjGEOM_CYLINDER:
-        return geom_size[1]  # cylinder size = (radius, half_length)
+        return geom_size[1]
     else:
-        return 0.03  # safe default for unknown primitives
+        return 0.03

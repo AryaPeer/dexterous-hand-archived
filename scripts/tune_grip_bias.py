@@ -16,7 +16,7 @@ def _place_pregrasped(model, data, nm, bias, z_offset=0.0):
     mujoco.mj_forward(model, data)
     gs_id = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_SITE, "grasp_site")
     gs = data.site_xpos[gs_id].copy()
-    gs[2] += z_offset  # shift peg center up so the grip catches its middle, not the top cap
+    gs[2] += z_offset
     qpos[nm.peg_qpos_start : nm.peg_qpos_start + 3] = gs
     qpos[nm.peg_qpos_start + 3 : nm.peg_qpos_start + 7] = [1.0, 0.0, 0.0, 0.0]
     data.qpos[:] = qpos
@@ -107,7 +107,7 @@ def hold_test(bias, steps=200, verbose=True, label="bias", show_place=False, z_o
                 print(f"    {n}: n={cnt} dz={dz:+.3f} dx={dx:+.3f} dy={dy:+.3f}")
             else:
                 print(f"    {n}: --")
-    return traj[steps][0], min_aa  # (final, min) axis_align
+    return traj[steps][0], min_aa
 
 
 def _with(**over):
@@ -123,7 +123,6 @@ def _without(*keys):
     return b
 
 
-# Verification: the committed GRIP_BIAS (with THJ5) vs the old pose (THJ5 removed).
 CANDIDATES = {
     "committed GRIP_BIAS": GRIP_BIAS,
     "old (no THJ5)": _without("rh_THJ5"),

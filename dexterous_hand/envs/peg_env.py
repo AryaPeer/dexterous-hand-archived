@@ -239,7 +239,6 @@ class ShadowHandPegMjxEnv(MjxVecEnv):
 
         mjx_data, _ = jax.lax.scan(_substep, mjx_data, None, length=self.scene_config.frame_skip)
 
-        # reward inputs
         finger_pos = get_fingertip_positions_jax(mjx_data.site_xpos, self._fingertip_site_ids)
         peg_pos, peg_quat, peg_linvel, peg_angvel = get_object_state_jax(
             mjx_data.qpos,
@@ -272,11 +271,9 @@ class ShadowHandPegMjxEnv(MjxVecEnv):
             self.scene_config.hole_depth,
         )
 
-        # per-wall contact force magnitudes (sum over all hole walls)
         wall_vals = mjx_data.sensordata[self._wall_force_adr]
         contact_force_mag = jnp.sum(wall_vals)
 
-        # curriculum stage gating
         fingers_on_peg = n_contacts >= 2
         peg_lifted = peg_pos[2] > env_state.reward_state.initial_peg_height + 0.02
         peg_near_hole = jnp.linalg.norm(peg_pos[:2] - hole_pos[:2]) < 0.03
@@ -395,7 +392,6 @@ class ShadowHandPegMjxEnv(MjxVecEnv):
             self.scene_config.hole_depth,
         )
 
-        # per-wall + total contact forces, exposed to the policy
         per_wall_forces = mjx_data.sensordata[self._wall_force_adr]
         contact_force_mag = jnp.sum(per_wall_forces)
         contact_forces = jnp.concatenate([per_wall_forces, jnp.array([contact_force_mag])])

@@ -50,10 +50,8 @@ class RewardConfig:
     fingertip_weights: tuple[float, float, float, float, float] = (1.0, 1.0, 1.0, 1.0, 2.5)
     drop_penalty: float = -20.0
     success_bonus_per_step: float = 5.0
-    # 25 steps = 1s of continuous at-height hold before the annuity starts.
     success_hold_steps: int = 25
     drop_arm_height: float = 0.04
-    # Quadratic action-magnitude penalty coefficient (applied to sum(a^2)).
     action_penalty_scale: float = 2e-4
     no_contact_idle_penalty: float = -0.08
     idle_grace_steps: int = 3
@@ -96,7 +94,6 @@ class PegRewardConfig:
     peg_hold_steps: int = 10
     reach_tanh_k: float = 5.0
     fingertip_weights: tuple[float, float, float, float, float] = (1.0, 1.0, 1.0, 1.0, 2.5)
-    # Quadratic action-magnitude penalty coefficient (applied to sum(a^2)).
     action_penalty_scale: float = 2e-4
     release_height: float = -0.015
     place_k: float = 4.0
@@ -122,10 +119,8 @@ class PegSceneConfig:
     action_smoothing_alpha: float = 0.2
     sim_timestep: float = 0.002
     frame_skip: int = 20
-    # Newton solver iteration caps — see SceneConfig.solver_iterations.
     solver_iterations: int = 8
     ls_iterations: int = 8
-    # MJX contact culling — see SceneConfig.mjx_max_geom_pairs.
     mjx_max_geom_pairs: int | None = None
     mjx_max_contact_points: int | None = None
 
@@ -173,14 +168,11 @@ class MjxPegTrainConfig:
     learning_rate: float = 3e-4
     batch_size: int = 4096
     n_steps_per_env: int = 128
-    # 4 passes per rollout — see MjxGraspTrainConfig.n_epochs.
     n_epochs: int = 4
     gamma: float = 0.99
     gae_lambda: float = 0.95
     clip_range: float = 0.2
-    # KL-adaptive LR bound — see MjxGraspTrainConfig.target_kl.
     target_kl: float = 0.05
-    # Deliberately below Playground's 1e-2 — see MjxGraspTrainConfig.ent_coef.
     ent_coef: float = 1e-3
     vf_coef: float = 0.5
     max_grad_norm: float = 0.5

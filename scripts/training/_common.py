@@ -40,7 +40,6 @@ class RewardInfoLoggerCallback(BaseCallback):
 
 
 Check = tuple[str, float, float, str]
-# A milestone: (timestep, [Check, ...], label).
 Milestone = tuple[int, list[Check], str]
 
 
@@ -91,7 +90,7 @@ class MilestoneGateCallback(BaseCallback):
             _, checks, label = self._milestones[self._idx]
             try:
                 self._evaluate(checks, label)
-            except Exception as exc:  # a gate bug must never kill a healthy run
+            except Exception as exc:
                 print(f"[MilestoneGate] WARNING: gate eval errored ({exc!r}); continuing.")
             self._idx += 1
 
@@ -147,7 +146,6 @@ class MilestoneGateCallback(BaseCallback):
             lines.append("")
             lines.append("  VERDICT: PASS — all gated metrics above floor; continuing.")
         print("\n".join(lines), flush=True)
-        # logging is best-effort; the stop decision is already made above
         with contextlib.suppress(Exception):
             self.logger.record("gate/passed", 0.0 if failures else 1.0)
 
@@ -177,7 +175,6 @@ def apply_saved_config(config: Any, saved: dict, _path: str = "config") -> None:
         if dataclasses.is_dataclass(cur):
             apply_saved_config(cur, new, f"{_path}.{f.name}")
             continue
-        # JSON round-trips tuples as lists — restore the original shapes.
         if isinstance(cur, tuple) and isinstance(new, list):
             new = tuple(new)
         elif isinstance(cur, list) and cur and isinstance(cur[0], tuple):

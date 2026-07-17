@@ -84,7 +84,6 @@ def test_insertion_depth_requires_lateral_containment():
     lying = [0.7071068, 0.7071068, 0.0, 0.0]
     spawn_z = cfg.table_height + cfg.peg_half_length + cfg.peg_radius + 0.001
 
-    # pre-fix these all measured depth ~0.080 (fraction 1.0 > threshold 0.7)
     outside_poses = [
         ("upright at spawn_min_radius", [cfg.spawn_min_radius, 0.0, spawn_z], upright),
         ("upright in table corner", [0.20, 0.10, spawn_z], upright),
@@ -110,11 +109,10 @@ def test_insertion_depth_requires_lateral_containment():
             f"lateral containment gate is not working"
         )
 
-    # a peg resting on the hole bottom, centred in the bore, must register
     in_tube_z = (
         float(model.body("hole").pos[2])
         - cfg.hole_depth
-        + 0.0025  # hole_bottom plate half-thickness (wt/2)
+        + 0.0025
         + cfg.peg_half_length
         + cfg.peg_radius
     )
@@ -154,7 +152,6 @@ def test_under_tube_slot_is_blocked():
         f"pedestal bottom {ped_bottom:.4f} floats above the table top "
         f"{cfg.table_height:.4f}"
     )
-    # footprint must cover the walls' footprint so nothing can slide under them
     wall_gid = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_GEOM, "hole_wall_px")
     wall_outer_x = float(model.geom_pos[wall_gid][0]) + float(model.geom_size[wall_gid][0])
     assert float(model.geom_size[ped_gid][0]) >= wall_outer_x - 1e-9
@@ -184,7 +181,6 @@ def test_wall_touch_sensors_alive():
     entrance_z = float(model.body("hole").pos[2])
     upright = [1.0, 0.0, 0.0, 0.0]
 
-    # upright peg, lower end 2cm into the bore, pushed 0.3mm into the wall
     press = cr - cfg.peg_radius + 0.0003
     in_bore_z = entrance_z - 0.02 + cfg.peg_half_length + cfg.peg_radius
     poses = {
@@ -192,13 +188,12 @@ def test_wall_touch_sensors_alive():
         "hole_wall_nx": [-press, 0.0, in_bore_z],
         "hole_wall_py": [0.0, press, in_bore_z],
         "hole_wall_ny": [0.0, -press, in_bore_z],
-        # bottomed out on the plate, 0.3mm interpenetrating
         "hole_bottom": [
             0.0,
             0.0,
             entrance_z
             - cfg.hole_depth
-            + 0.0025  # plate half-thickness (wt/2)
+            + 0.0025
             + cfg.peg_half_length
             + cfg.peg_radius
             - 0.0003,
@@ -321,7 +316,7 @@ def test_peg_transport_release_insertion():
     tip_z = data.xpos[nm.peg_body_id][2] - peg_len / 2.0
     z_cmd += entrance_z + 0.01 - tip_z
     do_steps(15, servo=True)
-    for _ in range(10):  # gradual engagement descent, servoing
+    for _ in range(10):
         tip_z = data.xpos[nm.peg_body_id][2] - peg_len / 2.0
         z_cmd += float(np.clip((entrance_z - 0.020) - tip_z, -0.004, 0.004))
         do_steps(2, servo=True)
@@ -347,13 +342,12 @@ def test_peg_transport_release_insertion():
     )
 
 
-# --- grasp task -------------------------------------------------------------
 
 CUBE_GRIP_SEED = {
     "sx": 0.115, "sy": -0.017, "z0": -0.02,
     "j3": 1.0, "j12": 0.5, "thj5": 0.5, "th1": 0.7, "squeeze": 0.4,
 }
-CUBE_SPAWN_XY = (0.075, 0.0)  # centre of the env's spawn band
+CUBE_SPAWN_XY = (0.075, 0.0)
 
 
 def _grasp_set_joint(model, qpos, name: str, val: float) -> None:
@@ -420,7 +414,7 @@ def test_grasp_lift_reaches_target_height():
     for gset in nm.finger_geom_ids_per_finger:
         hand_geoms |= gset
 
-    lift_z = 0.18  # slide_z command during the lift phase (range tops at 0.20)
+    lift_z = 0.18
     n_settle, n_lift, n_hold = 30, 40, 80
     total = n_settle + n_lift + n_hold
     final_lift = 0.0
