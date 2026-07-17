@@ -5,6 +5,7 @@ import pytest
 pytest.importorskip("mujoco.mjx")
 pytest.importorskip("jax")
 
+from dexterous_hand.config import MjxPegTrainConfig  # noqa: E402
 from dexterous_hand.envs.peg_env import ShadowHandPegMjxEnv  # noqa: E402
 
 
@@ -57,5 +58,18 @@ class TestPegMjxSmoke:
             # in-hand well above the table spawn height after settle
             peg_z = np.asarray(env._mjx_data_batch.xpos[:, env._nm.peg_body_id, 2])
             assert np.all(peg_z > table_spawn + 0.02)
+        finally:
+            env.close()
+
+    def test_from_config_seeds_first_rollout_p_pre_grasped(self):
+        """SB3 resets envs before the curriculum callback's
+        _on_training_start fires, so the env must be BORN with curriculum
+        stage 0's p_pre_grasped — not 0.0 — or the whole first episode wave
+        is table-spawned regardless of the schedule."""
+        config = MjxPegTrainConfig(num_envs=2, max_episode_steps=10)
+        env = ShadowHandPegMjxEnv.from_config(config)
+        try:
+            expected = config.curriculum_stages[0][2]
+            assert float(env._p_pre_grasped) == pytest.approx(expected)
         finally:
             env.close()

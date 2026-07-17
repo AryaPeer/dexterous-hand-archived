@@ -77,6 +77,7 @@ class MjxVecEnv(VecEnv):
         self._pending_rewards: np.ndarray | None = None
         self._pending_dones: np.ndarray | None = None
         self._pending_infos: list[dict] | None = None
+        self._full_reset_count = 0
 
     def _build_batched_step(self) -> Any:
         def _dr_step(
@@ -148,7 +149,13 @@ class MjxVecEnv(VecEnv):
             base_data,
         )
 
-        self._env_keys = jax.random.split(jax.random.fold_in(self._master_key, 0), self._num_envs)
+        # Fold in a running counter: with a constant fold every full reset
+        # (training start AND each curriculum-driven rebuild) replays the
+        # identical spawn sequence.
+        self._env_keys = jax.random.split(
+            jax.random.fold_in(self._master_key, self._full_reset_count), self._num_envs
+        )
+        self._full_reset_count += 1
 
         self._dr_key, dr_subkey = jax.random.split(self._dr_key)
         self._dr_params_batch = self._sample_dr_params_batch(dr_subkey)

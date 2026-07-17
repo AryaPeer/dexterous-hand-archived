@@ -54,6 +54,7 @@ class ShadowHandPegMjxEnv(MjxVecEnv):
         max_episode_steps: int = 500,
         obs_noise_std: float = 0.0,
         dr: DomainRandomization | None = None,
+        p_pre_grasped: float = 0.0,
     ) -> None:
         self.scene_config = scene_config or PegSceneConfig()
         self.reward_config = reward_config or PegRewardConfig()
@@ -65,7 +66,11 @@ class ShadowHandPegMjxEnv(MjxVecEnv):
         self._episode_limit = max_episode_steps
         self._reward_weights = self.reward_config.weights
 
-        self._p_pre_grasped = jnp.array(0.0)
+        # Seeded from the caller (from_config passes curriculum stage 0's p):
+        # SB3 resets every env BEFORE the curriculum callback's
+        # _on_training_start fires, so a 0.0 here would make the entire first
+        # episode wave table-spawned regardless of the curriculum schedule.
+        self._p_pre_grasped = jnp.array(float(p_pre_grasped))
 
         super().__init__(num_envs=num_envs, seed=seed, obs_noise_std=obs_noise_std, dr=dr)
 
@@ -496,4 +501,7 @@ class ShadowHandPegMjxEnv(MjxVecEnv):
             max_episode_steps=config.max_episode_steps,
             obs_noise_std=config.obs_noise_std,
             dr=config.dr,
+            p_pre_grasped=(
+                config.curriculum_stages[0][2] if config.curriculum_stages else 0.0
+            ),
         )

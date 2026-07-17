@@ -270,16 +270,34 @@ class MjxGraspTrainConfig:
     learning_rate: float = 3e-4
     batch_size: int = 4096
     n_steps_per_env: int = 128
-    n_epochs: int = 10
-    gamma: float = 0.995
+    # 4 passes over the 98k-sample rollout (x24 minibatches = 96 grad steps).
+    # 10 epochs = 240 grad steps drove policy KL past target_kl every update,
+    # collapsing the adaptive LR; reference PPO configs (MuJoCo Playground)
+    # run 4-8 updates per batch.
+    n_epochs: int = 4
+    # Effective credit horizon ~100 steps. With annuity-style rewards the
+    # solved state pays per-step, so credit only needs to bridge the short
+    # transport/release gap; reference manipulation configs cluster at
+    # 0.97-0.99 and lower gamma directly shrinks value-target variance (the
+    # rounds-12/13 value-loss blowup axis). VecNormalize's return discount
+    # follows this value automatically.
+    gamma: float = 0.99
     gae_lambda: float = 0.95
     clip_range: float = 0.2
+    # KL-adaptive learning-rate bound (RL-Games/DeXtreme-style controller in
+    # SBX): LR halves when update KL exceeds this. 0.02 throttled LR to 5e-5
+    # under normalized rewards; 0.05 keeps LR near 3e-4. Tighten toward
+    # 0.02-0.03 only if late-run policy churn shows up in the metrics.
+    target_kl: float = 0.05
     # Small positive entropy bonus to actively maintain exploration. With
     # ent_coef=0 the clamped log_std could only decay toward its floor
     # (sigma->0.05), monotonically losing exploration with no recovery path —
     # a known cause of premature convergence to bad grips. 1e-3 keeps a gentle
     # counter-pressure; the log_std clamp (<=0 -> sigma<=1.0) still prevents
-    # runaway. Reference: MuJoCo Playground LEAP reorient uses 1e-2.
+    # runaway. This is a deliberate divergence from MuJoCo Playground's 1e-2:
+    # that value pairs with an UNBOUNDED log_std and a fixed LR — under this
+    # clamped actor (sigma capped at 1.0, init at the cap) 1e-2 would pin
+    # sigma at the ceiling and destroy exploitation.
     ent_coef: float = 1e-3
     vf_coef: float = 0.5
     max_grad_norm: float = 0.5
@@ -325,16 +343,16 @@ class MjxPegTrainConfig:
     learning_rate: float = 3e-4
     batch_size: int = 4096
     n_steps_per_env: int = 128
-    n_epochs: int = 10
-    gamma: float = 0.997
+    # 4 passes per rollout — see MjxGraspTrainConfig.n_epochs.
+    n_epochs: int = 4
+    # See MjxGraspTrainConfig.gamma; the peg's complete/place annuities pay
+    # the solved state per-step, so the same ~100-step credit horizon holds.
+    gamma: float = 0.99
     gae_lambda: float = 0.95
     clip_range: float = 0.2
-    # Small positive entropy bonus to actively maintain exploration. With
-    # ent_coef=0 the clamped log_std could only decay toward its floor
-    # (sigma->0.05), monotonically losing exploration with no recovery path —
-    # a known cause of premature convergence to bad grips. 1e-3 keeps a gentle
-    # counter-pressure; the log_std clamp (<=0 -> sigma<=1.0) still prevents
-    # runaway. Reference: MuJoCo Playground LEAP reorient uses 1e-2.
+    # KL-adaptive LR bound — see MjxGraspTrainConfig.target_kl.
+    target_kl: float = 0.05
+    # Deliberately below Playground's 1e-2 — see MjxGraspTrainConfig.ent_coef.
     ent_coef: float = 1e-3
     vf_coef: float = 0.5
     max_grad_norm: float = 0.5
