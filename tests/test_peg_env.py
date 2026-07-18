@@ -31,6 +31,48 @@ class TestPegMjxSmoke:
         finally:
             env.close()
 
+    def test_curriculum_clearance_change_rebuilds_and_steps(self):
+        env = ShadowHandPegMjxEnv(num_envs=2, seed=0, max_episode_steps=2)
+        try:
+            env.reset()
+            env.set_curriculum_params(clearance=0.003, p_pre_grasped=0.5)
+            assert abs(float(env.scene_config.clearance) - 0.003) < 1e-12
+            actions = np.zeros((2, env.action_space.shape[0]), dtype=np.float32)
+            for step in range(1, 5):
+                env.step_async(actions)
+                obs, rewards, dones, infos = env.step_wait()
+                assert np.all(np.isfinite(obs))
+                assert np.all(np.isfinite(rewards))
+                assert bool(dones.all()) == (step % 2 == 0)
+        finally:
+            env.close()
+
+    def test_auto_reset_cycles_episodes(self):
+        env = ShadowHandPegMjxEnv(num_envs=4, seed=0, max_episode_steps=3)
+        try:
+            env.reset()
+            actions = np.zeros((4, env.action_space.shape[0]), dtype=np.float32)
+            for step in range(1, 9):
+                env.step_async(actions)
+                obs, _rewards, dones, infos = env.step_wait()
+                expect_done = step % 3 == 0
+                assert bool(dones.all()) == expect_done
+                assert bool(dones.any()) == expect_done
+                for i, info in enumerate(infos):
+                    if expect_done:
+                        assert info["TimeLimit.truncated"] is True
+                        assert "is_success" in info
+                        term = info["terminal_observation"]
+                        assert term.shape == obs[i].shape
+                        assert np.all(np.isfinite(term))
+                        assert not np.allclose(term, obs[i])
+                    else:
+                        assert "terminal_observation" not in info
+                        assert "is_success" not in info
+                assert np.all(np.isfinite(obs))
+        finally:
+            env.close()
+
     def test_pregrasped_lift_reference_clamped_to_table(self):
         """Pre-grasped spawns must clamp the lift reference to the table height."""
         env = ShadowHandPegMjxEnv(num_envs=4, seed=0, max_episode_steps=50)

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 from pathlib import Path
+from typing import Any
 
 import imageio.v2 as imageio
 import mujoco
@@ -95,7 +96,7 @@ def render_episode(
     steps: int = 200,
     fps: int = 25,
     seed: int = 0,
-) -> dict[str, float]:
+) -> dict[str, Any]:
     pre_grasped = mode == "pregrasp_hold"
     model, data, nm = make_data(cfg, seed=seed, pre_grasped=pre_grasped)
 
@@ -163,7 +164,7 @@ def main() -> None:
     ap.add_argument("--seed", type=int, default=0)
     args = ap.parse_args()
 
-    results: list[tuple[str, dict[str, float]]] = []
+    results: list[tuple[str, dict[str, Any]]] = []
 
     cfg1 = PegSceneConfig()
     out1 = args.out_dir / "peg_1_current_pregrasp.mp4"

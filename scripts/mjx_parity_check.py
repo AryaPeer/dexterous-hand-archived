@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import time
+from typing import Any
 
 import mujoco
 import numpy as np
@@ -236,7 +237,7 @@ def run_peg(engine_cls) -> dict[str, float]:
     sx_adr = model.jnt_qposadr[mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_JOINT, "slide_x")]
     sy_adr = model.jnt_qposadr[mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_JOINT, "slide_y")]
 
-    state = {"z": 0.0, "xy": np.zeros(2), "open": 0.0}
+    state: dict[str, Any] = {"z": 0.0, "xy": np.zeros(2), "open": 0.0}
 
     def do_steps(n: int, open_fingers: bool = False, servo: bool = False) -> None:
         for _ in range(n):
@@ -304,7 +305,7 @@ def main() -> None:
     )
     args = ap.parse_args()
 
-    engines: list[type] = []
+    engines: list[type[CpuEngine] | type[MjxEngine]] = []
     if args.backend in ("both", "cpu"):
         engines.append(CpuEngine)
     if args.backend in ("both", "mjx"):

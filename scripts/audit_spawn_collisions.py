@@ -79,16 +79,16 @@ def grasp_sample(rng: np.random.Generator, n: int = 256) -> dict:
         )
 
     md = np.array([r["min_dist"] for r in results])
-    disp = np.array([r["settle_obj_displacement"] for r in results])
+    disp_all = np.array([r["settle_obj_displacement"] for r in results])
     return {
         "n_samples": n,
         "n_overlapping": overlap_count,
         "min_dist_p5": float(np.percentile(md, 5)),
         "min_dist_p50": float(np.percentile(md, 50)),
         "min_dist_p95": float(np.percentile(md, 95)),
-        "settle_disp_p50": float(np.percentile(disp, 50)),
-        "settle_disp_p95": float(np.percentile(disp, 95)),
-        "settle_disp_max": float(np.max(disp)),
+        "settle_disp_p50": float(np.percentile(disp_all, 50)),
+        "settle_disp_p95": float(np.percentile(disp_all, 95)),
+        "settle_disp_max": float(np.max(disp_all)),
     }
 
 
@@ -171,16 +171,16 @@ def peg_sample(rng: np.random.Generator, n: int = 256, p_pre_grasped: float = 0.
         )
 
     md = np.array([r["min_dist"] for r in results])
-    disp = np.array([r["settle_obj_displacement"] for r in results])
+    disp_all = np.array([r["settle_obj_displacement"] for r in results])
     return {
         "n_samples": n,
         "n_overlapping": overlap_count,
         "min_dist_p5": float(np.percentile(md, 5)),
         "min_dist_p50": float(np.percentile(md, 50)),
         "min_dist_p95": float(np.percentile(md, 95)),
-        "settle_disp_p50": float(np.percentile(disp, 50)),
-        "settle_disp_p95": float(np.percentile(disp, 95)),
-        "settle_disp_max": float(np.max(disp)),
+        "settle_disp_p50": float(np.percentile(disp_all, 50)),
+        "settle_disp_p95": float(np.percentile(disp_all, 95)),
+        "settle_disp_max": float(np.max(disp_all)),
     }
 
 

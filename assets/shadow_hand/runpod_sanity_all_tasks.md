@@ -24,7 +24,10 @@ If anything fails, do not spend on a pod.
 
 1. Setup (section 2), JAX sees CUDA.
 2. `uv run pytest tests/test_grasp_env.py tests/test_peg_env.py` — the MJX
-   smoke tests that skip locally.
+   env tests (auto-reset cycling, pre-grasp settle, curriculum clearance
+   rebuild). This is also the first GPU exercise of the fused step/reset
+   path: buffer donation only activates on GPU, so a "donated buffer"
+   RuntimeError would surface here in the first minute, never mid-run.
 3. `uv run python scripts/mjx_parity_check.py` — both engines; bars:
    grasp lift >= 0.15, peg settle >= 0.73 / hold >= 0.70.
 4. Contact culling: measure max `ncon` over the parity trajectories + a

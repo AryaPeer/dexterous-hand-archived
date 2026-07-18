@@ -136,9 +136,10 @@ class ShadowHandPegMjxEnv(MjxVecEnv):
 
             self._rebuild_peg_caches()
             self._batched_get_obs = jax.jit(jax.vmap(self._get_obs_single, in_axes=(None, 0, 0)))
-            self._batched_step = self._build_batched_step()
+            self._fused_step = self._build_fused_step()
 
         self._batched_reset = jax.jit(jax.vmap(self._reset_single, in_axes=(None, 0, 0)))
+        self._fused_reset = self._build_fused_reset()
 
         if clearance_changed and self._mjx_data_batch is not None:
             self.reset()
@@ -160,7 +161,7 @@ class ShadowHandPegMjxEnv(MjxVecEnv):
         qvel = jnp.zeros(mjx_model.nv)
 
         mjx_data = mjx_data.replace(qpos=qpos, qvel=qvel)
-        mjx_data = mjx.forward(mjx_model, mjx_data)
+        mjx_data = mjx.kinematics(mjx_model, mjx_data)
 
         min_r = float(self.scene_config.spawn_min_radius)
         max_r = float(self.scene_config.spawn_max_radius)
@@ -187,7 +188,6 @@ class ShadowHandPegMjxEnv(MjxVecEnv):
         qpos = qpos.at[s + 3 : s + 7].set(jnp.array([1.0, 0.0, 0.0, 0.0]))
 
         mjx_data = mjx_data.replace(qpos=qpos, qvel=jnp.zeros(mjx_model.nv))
-        mjx_data = mjx.forward(mjx_model, mjx_data)
 
         mjx_data = mjx_data.replace(ctrl=self._grip_ctrl)
 

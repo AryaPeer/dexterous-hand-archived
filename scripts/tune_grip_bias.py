@@ -33,7 +33,7 @@ def _contact_report(model, data, nm):
     peg_gid = nm.peg_geom_id
     peg_c = data.xpos[nm.peg_body_id]
     names = ["ff", "mf", "rf", "lf", "th"]
-    out = {n: [] for n in names}
+    out: dict[str, list[np.ndarray]] = {n: [] for n in names}
     for ci in range(data.ncon):
         c = data.contact[ci]
         other = None
@@ -47,7 +47,7 @@ def _contact_report(model, data, nm):
             if other in gset:
                 out[names[fi]].append(c.pos.copy())
                 break
-    summary = {}
+    summary: dict[str, tuple[int, float | None, float | None, float | None]] = {}
     for n in names:
         pts = out[n]
         if pts:

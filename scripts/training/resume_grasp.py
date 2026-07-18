@@ -1,14 +1,13 @@
 
 import argparse
 from pathlib import Path
-from types import SimpleNamespace
 
 from dexterous_hand.config import MjxGraspTrainConfig
 from dexterous_hand.envs.grasp_env import ShadowHandGraspMjxEnv
 from scripts.training._common import load_saved_config, run_resume
 
 
-def train(args: SimpleNamespace) -> None:
+def train(args: argparse.Namespace) -> None:
     config = MjxGraspTrainConfig()
     load_saved_config(config, Path(args.model_path).expanduser().resolve())
     config.num_envs = args.num_envs
@@ -17,7 +16,7 @@ def train(args: SimpleNamespace) -> None:
     run_resume(args=args, config=config, env_cls=ShadowHandGraspMjxEnv)
 
 
-def parse_args() -> SimpleNamespace:
+def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Resume Shadow Hand grasping (MJX + SBX PPO)")
     parser.add_argument("--model-path", type=str, required=True,
                         help="Path to final_model.zip (or any checkpoint .zip)")

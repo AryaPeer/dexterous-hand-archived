@@ -7,6 +7,8 @@ from pathlib import Path
 import mujoco
 import numpy as np
 
+from dexterous_hand.config import PegSceneConfig, SceneConfig
+
 ASSETS_DIR = Path(__file__).resolve().parent.parent.parent / "assets" / "shadow_hand"
 
 FINGERTIP_BODIES = [
@@ -121,7 +123,7 @@ class SensorMap:
         return SensorMap(finger_touch_adr=[], wall_force_adr=[])
 
 
-def init_spec_options(spec: mujoco.MjSpec, config) -> None:
+def init_spec_options(spec: mujoco.MjSpec, config: SceneConfig | PegSceneConfig) -> None:
     """Timestep, gravity, contact model, solver caps, integrator, culling."""
     spec.option.timestep = config.sim_timestep
     spec.option.gravity = [0.0, 0.0, -9.81]
@@ -138,7 +140,7 @@ def init_spec_options(spec: mujoco.MjSpec, config) -> None:
     spec.stat.center = [0.0, 0.0, config.table_height]
 
 
-def add_workspace(spec: mujoco.MjSpec, config) -> None:
+def add_workspace(spec: mujoco.MjSpec, config: SceneConfig | PegSceneConfig) -> None:
     """Floor plane, table box, light, tracking camera."""
     spec.worldbody.add_geom(
         name="floor",
@@ -179,11 +181,11 @@ def add_workspace(spec: mujoco.MjSpec, config) -> None:
 
 def add_hand_slider(
     spec: mujoco.MjSpec,
-    config,
+    config: SceneConfig | PegSceneConfig,
     *,
     slide_z_range: tuple[float, float],
     xy_forcerange: float,
-):
+) -> mujoco.MjsSite:
     """3-axis prismatic mount + position-servo actuators; returns the attach site."""
     slider = spec.worldbody.add_body(
         name="hand_slider",
@@ -240,7 +242,9 @@ def add_hand_slider(
     return mount_site
 
 
-def attach_hand(spec: mujoco.MjSpec, mount_site, *, collide_with_walls: bool = False) -> None:
+def attach_hand(
+    spec: mujoco.MjSpec, mount_site: mujoco.MjsSite, *, collide_with_walls: bool = False
+) -> None:
     """Attach the Shadow Hand palm-down and cap its collision-hull sizes."""
     hand_xml = str(ASSETS_DIR / "right_hand.xml")
     child_spec = mujoco.MjSpec.from_file(hand_xml)

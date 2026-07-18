@@ -27,6 +27,18 @@ def _apply_dr(mjx_model: Any, dr_params: DRParams) -> Any:
     )
 
 
+def _mask(needs_reset: jnp.ndarray, leaf: jnp.ndarray) -> jnp.ndarray:
+    if leaf.ndim > 1:
+        return needs_reset.reshape(needs_reset.shape + (1,) * (leaf.ndim - 1))
+    return needs_reset
+
+
+def _merge(needs_reset: jnp.ndarray, reset_tree: Any, old_tree: Any) -> Any:
+    return jax.tree.map(
+        lambda r, n: jnp.where(_mask(needs_reset, r), r, n), reset_tree, old_tree
+    )
+
+
 class MjxVecEnv(VecEnv):
     def __init__(
         self,
@@ -56,21 +68,22 @@ class MjxVecEnv(VecEnv):
 
         self._master_key = jax.random.PRNGKey(seed)
         noise_key, self._master_key = jax.random.split(self._master_key)
-        self._obs_noise_key = noise_key
+        self._obs_noise_key = jax.device_put(noise_key)
         dr_key, self._master_key = jax.random.split(self._master_key)
-        self._dr_key = dr_key
-        self._env_keys = jax.random.split(self._master_key, num_envs)
+        self._dr_key = jax.device_put(dr_key)
+        self._env_keys = jax.device_put(jax.random.split(self._master_key, num_envs))
 
         self._ctrl_low = jnp.array(self._mj_model.actuator_ctrlrange[:n_act, 0])
         self._ctrl_high = jnp.array(self._mj_model.actuator_ctrlrange[:n_act, 1])
 
         self._batched_reset = jax.jit(jax.vmap(self._reset_single, in_axes=(None, 0, 0)))
         self._batched_get_obs = jax.jit(jax.vmap(self._get_obs_single, in_axes=(None, 0, 0)))
-        self._batched_step = self._build_batched_step()
+        self._fused_step = self._build_fused_step()
+        self._fused_reset = self._build_fused_reset()
 
         self._mjx_data_batch = None
         self._env_state_batch = None
-        self._step_count = jnp.zeros(num_envs, dtype=jnp.int32)
+        self._step_count = jax.device_put(jnp.zeros(num_envs, dtype=jnp.int32))
         self._dr_params_batch: DRParams | None = None
 
         self._pending_obs: np.ndarray | None = None
@@ -79,14 +92,111 @@ class MjxVecEnv(VecEnv):
         self._pending_infos: list[dict] | None = None
         self._full_reset_count = 0
 
-    def _build_batched_step(self) -> Any:
+    def _build_fused_step(self) -> Any:
+        """One jitted call: DR step, NaN guard, timeout, obs noise, on-device info means."""
+        dr_enabled = self._dr_config.enabled
+        noise_std = self._obs_noise_std
+        max_steps = self._max_episode_steps
+
         def _dr_step(
-            mjx_model: Any, dr_params: DRParams, data: Any, state: Any, action: jax.Array
+            model: Any, dr_params: DRParams | None, data: Any, state: Any, action: jax.Array
         ) -> Any:
-            local_model = _apply_dr(mjx_model, dr_params)
+            local_model = model if dr_params is None else _apply_dr(model, dr_params)
             return self._step_single(local_model, data, state, action)
 
-        return jax.jit(jax.vmap(_dr_step, in_axes=(None, 0, 0, 0, 0)))
+        vstep = jax.vmap(_dr_step, in_axes=(None, 0 if dr_enabled else None, 0, 0, 0))
+
+        def _fused(
+            model: Any,
+            dr_params: DRParams | None,
+            data: Any,
+            state: Any,
+            actions: jax.Array,
+            step_count: jax.Array,
+            noise_key: jax.Array,
+        ) -> Any:
+            new_data, new_state, obs, rewards, dones, info = vstep(
+                model, dr_params, data, state, actions
+            )
+            info = dict(info) if info is not None else {}
+
+            step_count = step_count + 1
+            timed_out = step_count >= max_steps
+
+            bad = jnp.any(jnp.isnan(new_data.qpos), axis=1) | jnp.any(jnp.isnan(obs), axis=1)
+            rewards = jnp.where(bad, 0.0, jnp.where(jnp.isnan(rewards), 0.0, rewards))
+            obs = jnp.where(bad[:, None], 0.0, jnp.nan_to_num(obs, nan=0.0))
+            info["metrics/nan_rate"] = bad.astype(jnp.float32)
+
+            truncated_only = timed_out & ~dones
+            dones = dones | timed_out | bad
+
+            if noise_std > 0.0:
+                noise_key, subkey = jax.random.split(noise_key)
+                obs = obs + jax.random.normal(subkey, obs.shape) * noise_std
+
+            is_success = info.pop("is_success", None)
+            means = {
+                k: jnp.nan_to_num(jnp.mean(v), nan=0.0, posinf=0.0, neginf=0.0)
+                for k, v in info.items()
+            }
+            return (
+                new_data,
+                new_state,
+                obs,
+                rewards,
+                dones,
+                truncated_only,
+                step_count,
+                noise_key,
+                is_success,
+                means,
+            )
+
+        donate = (2, 3) if jax.default_backend() in ("gpu", "cuda") else ()
+        return jax.jit(_fused, donate_argnums=donate)
+
+    def _build_fused_reset(self) -> Any:
+        """One jitted call: key split, all-env reset, where-merge, DR resample, reset obs."""
+        dr_enabled = self._dr_config.enabled
+        noise_std = self._obs_noise_std
+        vreset = jax.vmap(self._reset_single, in_axes=(None, 0, 0))
+        vobs = jax.vmap(self._get_obs_single, in_axes=(None, 0, 0))
+
+        def _fused(
+            model: Any,
+            dr_params: DRParams | None,
+            dr_key: jax.Array,
+            data: Any,
+            state: Any,
+            keys: jax.Array,
+            step_count: jax.Array,
+            noise_key: jax.Array,
+            needs_reset: jax.Array,
+        ) -> Any:
+            split_keys = jax.vmap(jax.random.split)(keys)
+            new_keys = jnp.where(needs_reset[:, None], split_keys[:, 0], keys)
+
+            reset_data, reset_state = vreset(model, data, new_keys)
+            new_data = _merge(needs_reset, reset_data, data)
+            new_state = _merge(needs_reset, reset_state, state)
+
+            if dr_enabled:
+                dr_key, dr_subkey = jax.random.split(dr_key)
+                reset_dr = self._sample_dr_params_batch(dr_subkey)
+                dr_params = _merge(needs_reset, reset_dr, dr_params)
+
+            step_count = jnp.where(needs_reset, 0, step_count)
+
+            reset_obs = vobs(model, new_data, new_state)
+            if noise_std > 0.0:
+                noise_key, subkey = jax.random.split(noise_key)
+                reset_obs = reset_obs + jax.random.normal(subkey, reset_obs.shape) * noise_std
+
+            return new_data, new_state, new_keys, dr_params, dr_key, step_count, noise_key, reset_obs
+
+        donate = (3, 4) if jax.default_backend() in ("gpu", "cuda") else ()
+        return jax.jit(_fused, donate_argnums=donate)
 
     def _build_model(self) -> mujoco.MjModel:
         raise NotImplementedError
@@ -148,117 +258,96 @@ class MjxVecEnv(VecEnv):
             base_data,
         )
 
-        self._env_keys = jax.random.split(
-            jax.random.fold_in(self._master_key, self._full_reset_count), self._num_envs
+        self._env_keys = jax.device_put(
+            jax.random.split(
+                jax.random.fold_in(self._master_key, self._full_reset_count), self._num_envs
+            )
         )
         self._full_reset_count += 1
 
-        self._dr_key, dr_subkey = jax.random.split(self._dr_key)
-        self._dr_params_batch = self._sample_dr_params_batch(dr_subkey)
+        if self._dr_config.enabled:
+            self._dr_key, dr_subkey = jax.random.split(self._dr_key)
+            self._dr_key = jax.device_put(self._dr_key)
+            self._dr_params_batch = jax.device_put(self._sample_dr_params_batch(dr_subkey))
+        else:
+            self._dr_params_batch = None
 
         batch_data, env_state = self._batched_reset(self._mjx_model, batch_data, self._env_keys)
         self._mjx_data_batch = batch_data
         self._env_state_batch = env_state
-        self._step_count = jnp.zeros(self._num_envs, dtype=jnp.int32)
+        self._step_count = jax.device_put(jnp.zeros(self._num_envs, dtype=jnp.int32))
 
         obs = self._batched_get_obs(self._mjx_model, batch_data, env_state)
         return self._noisy_obs(obs)
 
     def step_async(self, actions: np.ndarray) -> None:
-        actions_jax = jnp.array(actions, dtype=jnp.float32)
+        actions_jax = jnp.asarray(actions, dtype=jnp.float32)
 
-        new_data, new_state, obs, rewards, dones, reward_info = self._batched_step(
+        (
+            new_data,
+            new_state,
+            obs,
+            rewards,
+            dones,
+            truncated_only,
+            step_count,
+            noise_key,
+            is_success,
+            means,
+        ) = self._fused_step(
             self._mjx_model,
             self._dr_params_batch,
             self._mjx_data_batch,
             self._env_state_batch,
             actions_jax,
+            self._step_count,
+            self._obs_noise_key,
+        )
+        self._obs_noise_key = noise_key
+
+        obs_np, rewards_np, dones_np, truncated_np, is_success_np, means_np = jax.device_get(
+            (obs, rewards, dones, truncated_only, is_success, means)
         )
 
-        self._step_count = self._step_count + 1
-        timed_out = self._step_count >= self._max_episode_steps
-
-        bad = jnp.any(jnp.isnan(new_data.qpos), axis=1) | jnp.any(jnp.isnan(obs), axis=1)
-        rewards = jnp.where(bad, 0.0, jnp.where(jnp.isnan(rewards), 0.0, rewards))
-        obs = jnp.where(bad[:, None], 0.0, jnp.nan_to_num(obs, nan=0.0))
-        if reward_info is not None:
-            reward_info["metrics/nan_rate"] = bad.astype(jnp.float32)
-
-        truncated_only = timed_out & ~dones
-        dones = dones | timed_out | bad
-
-        needs_reset = dones
-        if jnp.any(needs_reset):
-            self._env_keys = jax.vmap(
-                lambda k, need: jax.lax.cond(
-                    need, lambda k: jax.random.split(k)[0], lambda k: k, k
-                ),
-                in_axes=(0, 0),
-            )(self._env_keys, needs_reset)
-
-            reset_data, reset_state = self._batched_reset(self._mjx_model, new_data, self._env_keys)
-
-            self._dr_key, dr_subkey = jax.random.split(self._dr_key)
-            reset_dr = self._sample_dr_params_batch(dr_subkey)
-            self._dr_params_batch = jax.tree.map(
-                lambda r, n: jnp.where(
-                    needs_reset.reshape(-1, *([1] * (r.ndim - 1))) if r.ndim > 1 else needs_reset,
-                    r,
-                    n,
-                ),
-                reset_dr,
-                self._dr_params_batch,
-            )
-
-            new_data = jax.tree.map(
-                lambda r, n: jnp.where(needs_reset.reshape(-1, *([1] * (r.ndim - 1))), r, n),
-                reset_data,
+        if dones_np.any():
+            (
                 new_data,
-            )
-            new_state = jax.tree.map(
-                lambda r, n: jnp.where(
-                    needs_reset.reshape(-1, *([1] * (r.ndim - 1))) if r.ndim > 0 else needs_reset,
-                    r,
-                    n,
-                ),
-                reset_state,
                 new_state,
+                self._env_keys,
+                self._dr_params_batch,
+                self._dr_key,
+                step_count,
+                self._obs_noise_key,
+                reset_obs,
+            ) = self._fused_reset(
+                self._mjx_model,
+                self._dr_params_batch,
+                self._dr_key,
+                new_data,
+                new_state,
+                self._env_keys,
+                step_count,
+                self._obs_noise_key,
+                dones,
             )
-
-            self._step_count = jnp.where(needs_reset, 0, self._step_count)
-
-            reset_obs = self._batched_get_obs(self._mjx_model, new_data, new_state)
-            obs_np = self._noisy_obs(obs)
-            reset_obs_np = self._noisy_obs(reset_obs)
+            reset_obs_np = np.asarray(reset_obs)
+            obs_np = np.array(obs_np)
         else:
-            obs_np = self._noisy_obs(obs)
             reset_obs_np = None
 
         self._mjx_data_batch = new_data
         self._env_state_batch = new_state
+        self._step_count = step_count
 
-        dones_np = np.asarray(dones)
-        truncated_np = np.asarray(truncated_only)
-        rewards_np = np.asarray(rewards, dtype=np.float64)
-
-        is_success_np: np.ndarray | None = None
-        agg_info: dict[str, float] = {}
-        if reward_info is not None:
-            per_env = reward_info.pop("is_success", None)
-            if per_env is not None:
-                is_success_np = np.asarray(per_env)
-            keys = sorted(reward_info.keys())
-            if keys:
-                means = np.asarray(jnp.stack([jnp.mean(reward_info[k]) for k in keys]))
-                means = np.nan_to_num(means, nan=0.0, posinf=0.0, neginf=0.0)
-                agg_info = {k: float(m) for k, m in zip(keys, means, strict=True)}
+        rewards_np = np.asarray(rewards_np, dtype=np.float64)
+        agg_info = {k: float(means_np[k]) for k in sorted(means_np)}
 
         infos: list[dict[str, Any]] = []
         for i in range(self._num_envs):
             info: dict[str, Any] = {}
-            if is_success_np is not None:
-                info["is_success"] = float(is_success_np[i])
             if dones_np[i]:
+                if is_success_np is not None:
+                    info["is_success"] = float(is_success_np[i])
                 info["terminal_observation"] = obs_np[i].copy()
                 if truncated_np[i]:
                     info["TimeLimit.truncated"] = True
