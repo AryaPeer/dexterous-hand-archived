@@ -23,8 +23,8 @@ class SceneConfig:
     frame_skip: int = 8
     solver_iterations: int = 8
     ls_iterations: int = 8
-    mjx_max_geom_pairs: int | None = None
-    mjx_max_contact_points: int | None = None
+    mjx_max_geom_pairs: int | None = 128
+    mjx_max_contact_points: int | None = 48
 
 
 @dataclass
@@ -121,8 +121,8 @@ class PegSceneConfig:
     frame_skip: int = 20
     solver_iterations: int = 8
     ls_iterations: int = 8
-    mjx_max_geom_pairs: int | None = None
-    mjx_max_contact_points: int | None = None
+    mjx_max_geom_pairs: int | None = 384
+    mjx_max_contact_points: int | None = 48
 
 
 @dataclass
