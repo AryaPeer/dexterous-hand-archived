@@ -10,12 +10,15 @@ the right direction under GPU/MJX at scale.
 Everything here is free and local:
 
 ```
-uv run ruff check . && uv run mypy dexterous_hand scripts main.py
-uv run pytest                                    # incl. slow winnability proofs
-uv run python scripts/check_reward_gradient.py   # expected: PEG: PASS / GRASP: PASS
-uv run python scripts/mjx_parity_check.py --backend cpu
-uv run python scripts/render_peg_transport.py    # watch: engage -> release -> bottom-out
-uv run python scripts/render_grasp_diagnostic.py # watch: grip forms, 10cm lift held
+uv run --no-sync ruff check . && uv run --no-sync mypy dexterous_hand scripts main.py
+uv run --no-sync pytest --ignore=tests/test_grasp_env.py --ignore=tests/test_peg_env.py
+# ^ CPU suite incl. slow winnability proofs (~20s). The two ignored files are
+#   MJX env tests: with mjx installed they RUN on CPU and the clearance-rebuild
+#   test recompiles the fused step under XLA (~40+ CPU-min) — run them on the pod.
+uv run --no-sync python scripts/check_reward_gradient.py   # expected: PEG: PASS / GRASP: PASS
+uv run --no-sync python scripts/mjx_parity_check.py --backend cpu
+uv run --no-sync python scripts/render_peg_transport.py    # watch: engage -> release -> bottom-out
+uv run --no-sync python scripts/render_grasp_diagnostic.py # watch: grip forms, 10cm lift held
 ```
 
 If anything fails, do not spend on a pod.
