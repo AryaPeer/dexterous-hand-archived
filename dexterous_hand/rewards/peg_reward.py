@@ -130,7 +130,8 @@ def peg_reward(
     target_tip = hole_position + hole_axis * release_height
     target_top = target_tip + hole_axis * peg_length
     keypoint_dist = jnp.linalg.norm(tip - target_tip) + jnp.linalg.norm(top - target_top)
-    place = 1.0 - jnp.tanh(place_k * keypoint_dist)
+    place_gate = jnp.maximum(contact_scale, jnp.clip(insertion_fraction / 0.05, 0.0, 1.0))
+    place = (1.0 - jnp.tanh(place_k * keypoint_dist)) * place_gate
 
     new_hold = jnp.where(
         insertion_fraction > success_threshold,

@@ -13,10 +13,12 @@ PEG_GATES = [
     (
         10_000_000,
         [
-            ("metrics/axis_align", 0.70, float("nan"),
+            ("metrics/num_finger_contacts", 1.5, 0.19,
+             "peg held, not parked (the pre-fix 5M park-farm read 0.19)"),
+            ("metrics/axis_align", 0.70, 0.90,
              "peg held vertical (a sideways-grip collapse reads ~0.07)"),
-            ("metrics/stage", 1.5, float("nan"), "task progressed past grasp-and-sit"),
-            ("metrics/peg_height", 0.45, float("nan"),
+            ("metrics/stage", 1.5, 0.13, "task progressed past grasp-and-sit"),
+            ("metrics/peg_height", 0.45, 0.435,
              "peg held lifted, not dropped (kill bar: mean >= +27mm)"),
         ],
         "peg 10M: vertical lifted grip (real insertion not expected yet)",
@@ -24,10 +26,10 @@ PEG_GATES = [
     (
         30_000_000,
         [
-            ("metrics/axis_align", 0.80, float("nan"), "vertical grip held"),
-            ("metrics/insertion_depth", 0.001, float("nan"),
+            ("metrics/axis_align", 0.80, 0.90, "vertical grip held"),
+            ("metrics/insertion_depth", 0.001, 0.0,
              "in-bore insertion happening at all (exact 0 = never inserts)"),
-            ("metrics/insertion_hold_steps", 0.05, float("nan"),
+            ("metrics/insertion_hold_steps", 0.05, 0.0,
              "some sustained in-bore holds occurring (exact 0 = never holds depth)"),
         ],
         "peg 30M: insertion exists",

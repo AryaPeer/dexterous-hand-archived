@@ -129,12 +129,14 @@ def check_peg() -> bool:
     farm_depth = 0.69 * pl
     s_farm = run(hole_z - farm_depth + pl / 2.0, insertion_depth=farm_depth,
                  stage=3, steady_steps=30)
+    s_parked = run(initial_z, peg_xy=(0.05, 0.0), gripped=False, stage=0, steady_steps=30)
 
     t_table = float(s_table["reward/total"])
     t_lift = float(s_lift["reward/total"])
     t_hover = float(s_hover["reward/total"])
     t_settled = float(s_settled["reward/total"])
     t_farm = float(s_farm["reward/total"])
+    t_parked = float(s_parked["reward/total"])
     print()
     print("  winning-trajectory per-step totals:")
     print(f"    gripped on table (r={spawn_r*100:.0f}cm)  = {t_table:>9.3f}")
@@ -142,13 +144,16 @@ def check_peg() -> bool:
     print(f"    gripped at release pose        = {t_hover:>9.3f}")
     print(f"    RELEASED, settled in bore      = {t_settled:>9.3f}")
     print(f"    farm state (grip @ frac 0.69)  = {t_farm:>9.3f}")
+    print(f"    parked by tube, NO grip        = {t_parked:>9.3f}")
     monotone = t_table < t_lift < t_hover < t_settled
     beats_farm = t_settled > t_farm * 1.5
+    parked_pays_nothing = t_parked < 1.0 and t_parked < t_table
     print()
     print(f"  GATE 3: monotone table<lift<hover<settled   {'PASS' if monotone else 'FAIL'}")
     print(f"  GATE 4: settled > 1.5x farm state           {'PASS' if beats_farm else 'FAIL'}")
+    print(f"  GATE 5: parked-ungripped pays ~nothing      {'PASS' if parked_pays_nothing else 'FAIL'}")
 
-    return pass_delta and pass_lift_vs_grasp and monotone and beats_farm
+    return pass_delta and pass_lift_vs_grasp and monotone and beats_farm and parked_pays_nothing
 
 
 def check_grasp() -> bool:

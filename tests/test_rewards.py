@@ -303,6 +303,18 @@ class TestPegJax:
         assert p_lifted < p_engaged
         assert p_engaged > 0.9
 
+    def test_place_pays_nothing_ungripped_outside_bore(self):
+        kw = self._kw()
+        kw["peg_position"] = jnp.array([0.05, 0.0, 0.85])
+        kw["peg_height"] = jnp.asarray(0.85)
+        kw["finger_contact_mask"] = jnp.array([False] * 5)
+        _, _, info = peg_reward(state=init_peg_reward_state(0.85), **kw)
+        assert float(info["reward/place"]) < 0.02, (
+            "an ungripped peg parked outside the bore must not earn place — "
+            "a 5M sanity converged to nudging the peg against the tube and "
+            "farming ~3/step from it"
+        )
+
     def test_drop_penalty_not_fired_when_inserted(self):
         kw = self._kw()
         state = init_peg_reward_state(0.85)

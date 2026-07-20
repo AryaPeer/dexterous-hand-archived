@@ -9,15 +9,15 @@ GRASP_GATES = [
     (
         10_000_000,
         [
-            ("metrics/num_finger_contacts", 2.5, float("nan"), "grip forms and stays formed"),
-            ("reward/grasping", 0.60, float("nan"), "grasp reward maintained"),
+            ("metrics/num_finger_contacts", 2.5, 4.38, "grip forms and stays formed"),
+            ("reward/grasping", 0.60, 0.90, "grasp reward maintained"),
         ],
         "grasp 10M: grip health",
     ),
     (
         30_000_000,
         [
-            ("metrics/object_height", 0.445, float("nan"),
+            ("metrics/object_height", 0.445, 0.435,
              "lift emerged (mean >= ~1cm over the window; flat 0.435 = never lifts "
              "despite the slide_z gradient — the run's bet has failed)"),
         ],
