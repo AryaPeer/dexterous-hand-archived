@@ -65,6 +65,30 @@ GRIP_BIAS: dict[str, float] = {
     "rh_THJ1": 1.4,
 }
 
+CUBE_GRIP_SPAWN_XY: tuple[float, float] = (0.075, 0.0)
+
+CUBE_GRIP_BIAS: dict[str, float] = {
+    "slide_x": 0.115,
+    "slide_y": -0.017,
+    "slide_z": -0.02,
+    "rh_FFJ3": 1.0,
+    "rh_MFJ3": 1.0,
+    "rh_RFJ3": 1.0,
+    "rh_LFJ3": 1.0,
+    "rh_FFJ2": 0.5,
+    "rh_MFJ2": 0.5,
+    "rh_RFJ2": 0.5,
+    "rh_LFJ2": 0.5,
+    "rh_FFJ1": 0.5,
+    "rh_MFJ1": 0.5,
+    "rh_RFJ1": 0.5,
+    "rh_LFJ1": 0.5,
+    "rh_THJ5": 0.5,
+    "rh_THJ4": 1.2,
+    "rh_THJ2": 0.3,
+    "rh_THJ1": 0.7,
+}
+
 
 def apply_flexion_bias(
     qpos: np.ndarray,

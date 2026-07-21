@@ -14,7 +14,10 @@ from dexterous_hand.config import (  # noqa: E402
 )
 from dexterous_hand.envs.peg_scene_builder import build_peg_scene  # noqa: E402
 from dexterous_hand.envs.scene_builder import (  # noqa: E402
+    CUBE_GRIP_BIAS,
+    CUBE_GRIP_SPAWN_XY,
     OBJECT_TYPES,
+    apply_flexion_bias,
     build_scene,
     get_object_half_height,
 )
@@ -378,6 +381,53 @@ def _cube_grip_ctrl(model, p: dict, squeeze: float, z: float) -> np.ndarray:
     _grasp_seta(model, ctrl, "rh_A_THJ2", 0.3)
     _grasp_seta(model, ctrl, "rh_A_THJ1", p["th1"] + squeeze)
     return ctrl
+
+
+def test_pre_grasped_spawn_starts_with_formed_grip():
+    """CUBE_GRIP_BIAS + CUBE_GRIP_SPAWN_XY must spawn fingers already on the cube."""
+    scfg = SceneConfig()
+    model, data, nm = build_scene(scfg)
+
+    qpos = data.qpos.copy()
+    apply_flexion_bias(qpos, model, bias_map=CUBE_GRIP_BIAS)
+
+    gt, gs = OBJECT_TYPES["large_cube"]
+    obj_z0 = scfg.table_height + get_object_half_height(gt, gs) + 0.001
+    s = nm.obj_qpos_start
+    qpos[s : s + 3] = [CUBE_GRIP_SPAWN_XY[0], CUBE_GRIP_SPAWN_XY[1], obj_z0]
+    qpos[s + 3 : s + 7] = [1.0, 0.0, 0.0, 0.0]
+    data.qpos[:] = qpos
+    data.qvel[:] = 0.0
+    mujoco.mj_forward(model, data)
+
+    hand_geoms: set[int] = set()
+    for gset in nm.finger_geom_ids_per_finger:
+        hand_geoms |= gset
+
+    def cube_contacts() -> int:
+        return sum(
+            1
+            for ci in range(data.ncon)
+            if (data.contact[ci].geom1 == nm.object_geom_id
+                and data.contact[ci].geom2 in hand_geoms)
+            or (data.contact[ci].geom2 == nm.object_geom_id
+                and data.contact[ci].geom1 in hand_geoms)
+        )
+
+    n_at_spawn = cube_contacts()
+    assert n_at_spawn >= 2, (
+        f"pre-grasped spawn has only {n_at_spawn} cube contacts at reset — "
+        "the curriculum would hand the policy a pose in midair, not a grip"
+    )
+
+    assert CUBE_GRIP_BIAS["slide_x"] == CUBE_GRIP_SEED["sx"]
+    assert CUBE_GRIP_BIAS["slide_y"] == CUBE_GRIP_SEED["sy"]
+    assert CUBE_GRIP_BIAS["slide_z"] == CUBE_GRIP_SEED["z0"]
+    assert CUBE_GRIP_BIAS["rh_FFJ3"] == CUBE_GRIP_SEED["j3"]
+    assert CUBE_GRIP_BIAS["rh_FFJ2"] == CUBE_GRIP_SEED["j12"]
+    assert CUBE_GRIP_BIAS["rh_THJ5"] == CUBE_GRIP_SEED["thj5"]
+    assert CUBE_GRIP_BIAS["rh_THJ1"] == CUBE_GRIP_SEED["th1"]
+    assert tuple(CUBE_GRIP_SPAWN_XY) == tuple(CUBE_SPAWN_XY)
 
 
 @pytest.mark.slow

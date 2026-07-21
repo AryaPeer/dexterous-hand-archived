@@ -15,6 +15,8 @@ from dexterous_hand.config import (
 )
 from dexterous_hand.envs.mjx_vec_env import MjxVecEnv
 from dexterous_hand.envs.scene_builder import (
+    CUBE_GRIP_BIAS,
+    CUBE_GRIP_SPAWN_XY,
     SLIDE_Z_INIT,
     apply_flexion_bias,
     build_scene,
@@ -50,11 +52,13 @@ class ShadowHandGraspMjxEnv(MjxVecEnv):
         max_episode_steps: int = 200,
         obs_noise_std: float = 0.0,
         dr: DomainRandomization | None = None,
+        p_pre_grasped: float = 0.0,
     ) -> None:
         self.scene_config = scene_config or SceneConfig()
         self.reward_config = reward_config or RewardConfig()
         self._episode_limit = max_episode_steps
         self._reward_weights = self.reward_config.weights
+        self._p_pre_grasped = jnp.array(float(p_pre_grasped))
 
         super().__init__(num_envs=num_envs, seed=seed, obs_noise_std=obs_noise_std, dr=dr)
 
@@ -65,6 +69,10 @@ class ShadowHandGraspMjxEnv(MjxVecEnv):
         slide_z_jid = mujoco.mj_name2id(self._mj_model, mujoco.mjtObj.mjOBJ_JOINT, "slide_z")
         init_qpos[self._mj_model.jnt_qposadr[slide_z_jid]] = SLIDE_Z_INIT
         self._init_qpos = jnp.array(init_qpos)
+
+        init_qpos_grip = self._mj_data.qpos.copy()
+        apply_flexion_bias(init_qpos_grip, self._mj_model, bias_map=CUBE_GRIP_BIAS)
+        self._init_qpos_grip = jnp.array(init_qpos_grip)
 
         self._finger_touch_adr = jnp.asarray(
             self._nm.sensor_map.finger_touch_adr, dtype=jnp.int32
@@ -93,21 +101,29 @@ class ShadowHandGraspMjxEnv(MjxVecEnv):
     def _max_episode_steps(self) -> int:
         return self._episode_limit
 
+    def set_curriculum_params(self, p_pre_grasped: float) -> None:
+        self._p_pre_grasped = jnp.array(float(p_pre_grasped))
+        self._batched_reset = jax.jit(jax.vmap(self._reset_single, in_axes=(None, 0, 0)))
+        self._fused_reset = self._build_fused_reset()
+
     def _reset_single(
         self, mjx_model: Any, mjx_data: Any, key: jax.Array
     ) -> tuple[Any, GraspEnvState]:
         nm = self._nm
-        k1, k2, k3 = jax.random.split(key, 3)
+        k1, k2, k3, k4 = jax.random.split(key, 4)
 
-        qpos = self._init_qpos
+        spawn_pre_grasped = jax.random.uniform(k4) < self._p_pre_grasped
+        qpos = jnp.where(spawn_pre_grasped, self._init_qpos_grip, self._init_qpos)
 
         hand_qpos = qpos[nm.hand_qpos_start : nm.hand_qpos_end]
         noise = jax.random.uniform(k1, shape=hand_qpos.shape, minval=-0.05, maxval=0.05)
         noise = noise.at[0:3].set(0.0)
         qpos = qpos.at[nm.hand_qpos_start : nm.hand_qpos_end].set(hand_qpos + noise)
 
-        obj_x = jax.random.uniform(k2, minval=0.05, maxval=0.10)
-        obj_y = jax.random.uniform(k3, minval=-0.03, maxval=0.03)
+        rand_x = jax.random.uniform(k2, minval=0.05, maxval=0.10)
+        rand_y = jax.random.uniform(k3, minval=-0.03, maxval=0.03)
+        obj_x = jnp.where(spawn_pre_grasped, CUBE_GRIP_SPAWN_XY[0], rand_x)
+        obj_y = jnp.where(spawn_pre_grasped, CUBE_GRIP_SPAWN_XY[1], rand_y)
         obj_z = self.scene_config.table_height + self._object_half_height + 0.001
 
         s = nm.obj_qpos_start
@@ -254,4 +270,7 @@ class ShadowHandGraspMjxEnv(MjxVecEnv):
             max_episode_steps=config.max_episode_steps,
             obs_noise_std=config.obs_noise_std,
             dr=config.dr,
+            p_pre_grasped=(
+                float(config.curriculum_stages[0][1]) if config.curriculum_stages else 0.0
+            ),
         )

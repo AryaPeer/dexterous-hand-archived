@@ -5,6 +5,8 @@ import mujoco
 from dexterous_hand.config import SceneConfig
 from dexterous_hand.envs._scene_common import (  # noqa: F401  (re-exported API)
     ASSETS_DIR,
+    CUBE_GRIP_BIAS,
+    CUBE_GRIP_SPAWN_XY,
     FINGER_BODY_PREFIXES,
     FINGER_TOUCH_SITE_NAMES,
     FINGERTIP_BODIES,

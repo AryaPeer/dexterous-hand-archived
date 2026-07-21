@@ -154,6 +154,16 @@ class MjxGraspTrainConfig:
     scene_config: SceneConfig = field(default_factory=SceneConfig)
     reward_config: RewardConfig = field(default_factory=RewardConfig)
     dr: DomainRandomization = field(default_factory=DomainRandomization)
+    curriculum_reference_timesteps: int = 70_000_000
+    curriculum_stages: list[tuple[int, float]] = field(
+        default_factory=lambda: [
+            (0, 0.5),
+            (10_000_000, 0.4),
+            (25_000_000, 0.3),
+            (40_000_000, 0.2),
+            (55_000_000, 0.1),
+        ]
+    )
 
 
 def _mjx_peg_reward_config() -> PegRewardConfig:
