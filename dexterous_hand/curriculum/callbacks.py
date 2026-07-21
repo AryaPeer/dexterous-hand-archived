@@ -1,8 +1,4 @@
-import logging
-
 from stable_baselines3.common.callbacks import BaseCallback
-
-logger = logging.getLogger(__name__)
 
 
 def scale_stage_starts(
@@ -45,11 +41,10 @@ class GraspCurriculumCallback(BaseCallback):
         p_pre_grasped = float(self.stages[stage_idx][1])
         self.training_env.env_method("set_curriculum_params", p_pre_grasped)
         if self.verbose:
-            logger.info(
-                "[Curriculum] Grasp stage %d: p_pre_grasped=%.2f at step %d",
-                stage_idx,
-                p_pre_grasped,
-                self.num_timesteps,
+            print(
+                f"[Curriculum] Grasp stage {stage_idx}: "
+                f"p_pre_grasped={p_pre_grasped:.2f} at step {self.num_timesteps}",
+                flush=True,
             )
 
     def _on_training_start(self) -> None:
@@ -95,12 +90,10 @@ class AssemblyCurriculumCallback(BaseCallback):
         self.training_env.env_method("set_curriculum_params", clearance, p_pre_grasped)
 
         if self.verbose:
-            logger.info(
-                "[Curriculum] Stage %d: clearance=%.1fmm, p_pre_grasped=%.2f at step %d",
-                start_stage,
-                clearance * 1000,
-                p_pre_grasped,
-                self.num_timesteps,
+            print(
+                f"[Curriculum] Stage {start_stage}: clearance={clearance * 1000:.1f}mm, "
+                f"p_pre_grasped={p_pre_grasped:.2f} at step {self.num_timesteps}",
+                flush=True,
             )
 
     def _on_step(self) -> bool:
@@ -114,12 +107,11 @@ class AssemblyCurriculumCallback(BaseCallback):
             self.training_env.env_method("set_curriculum_params", clearance, p_pre_grasped)
 
             if self.verbose:
-                logger.info(
-                    "[Curriculum] Stage %d: clearance=%.1fmm, p_pre_grasped=%.2f at step %d",
-                    self._current_stage,
-                    clearance * 1000,
-                    p_pre_grasped,
-                    self.num_timesteps,
+                print(
+                    f"[Curriculum] Stage {self._current_stage}: "
+                    f"clearance={clearance * 1000:.1f}mm, "
+                    f"p_pre_grasped={p_pre_grasped:.2f} at step {self.num_timesteps}",
+                    flush=True,
                 )
 
         return True

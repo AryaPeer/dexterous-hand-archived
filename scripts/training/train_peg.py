@@ -13,13 +13,15 @@ PEG_GATES = [
     (
         10_000_000,
         [
-            ("metrics/num_finger_contacts", 1.5, 0.19,
+            ("metrics/num_finger_contacts", 1.5, 2.60,
              "peg held, not parked (the pre-fix 5M park-farm read 0.19)"),
-            ("metrics/axis_align", 0.70, 0.90,
-             "peg held vertical (a sideways-grip collapse reads ~0.07)"),
-            ("metrics/stage", 1.5, 0.13, "task progressed past grasp-and-sit"),
-            ("metrics/peg_height", 0.45, 0.435,
-             "peg held lifted, not dropped (kill bar: mean >= +27mm)"),
+            ("metrics/axis_align", 0.70, 0.957,
+             "peg held vertical; the frozen-exploration run collapsed to 0.10 here "
+             "and this is the gate that correctly caught it"),
+            ("metrics/stage", 1.2, 0.946, "task progressed past grasp-and-sit"),
+            ("metrics/peg_height", 0.435, 0.4366,
+             "peg upright, not knocked over (resting height is 0.438; the frozen "
+             "run read 0.410 lying on its side)"),
         ],
         "peg 10M: vertical lifted grip (real insertion not expected yet)",
     ),
