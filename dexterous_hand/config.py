@@ -148,7 +148,7 @@ class MjxGraspTrainConfig:
     norm_reward: bool = True
     obs_noise_std: float = 0.005
     max_episode_steps: int = 200
-    log_std_init: float = 0.0
+    log_std_init: float = -1.0
     log_std_min: float = -3.0
     log_std_max: float = 0.0
     scene_config: SceneConfig = field(default_factory=SceneConfig)
@@ -183,7 +183,7 @@ class MjxPegTrainConfig:
     norm_reward: bool = True
     obs_noise_std: float = 0.005
     max_episode_steps: int = 500
-    log_std_init: float = 0.0
+    log_std_init: float = -1.0
     log_std_min: float = -3.0
     log_std_max: float = 0.0
     scene_config: PegSceneConfig = field(default_factory=PegSceneConfig)

@@ -83,8 +83,9 @@ class TestConfigDefaults:
         for cls in (MjxGraspTrainConfig, MjxPegTrainConfig):
             c = cls()
             assert c.log_std_min < c.log_std_max
-            assert c.log_std_min <= c.log_std_init <= c.log_std_max
             assert c.log_std_max == 0.0
+            margin = 0.05
+            assert c.log_std_min + margin < c.log_std_init < c.log_std_max - margin
 
     def test_all_configs_instantiate(self):
 
