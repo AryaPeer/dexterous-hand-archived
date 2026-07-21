@@ -138,7 +138,7 @@ class MjxGraspTrainConfig:
     gae_lambda: float = 0.95
     clip_range: float = 0.2
     target_kl: float = 0.05
-    ent_coef: float = 1e-3
+    ent_coef: float = 0.0
     vf_coef: float = 0.5
     max_grad_norm: float = 0.5
     net_arch: list[int] = field(default_factory=lambda: [256, 256, 256])
@@ -173,7 +173,7 @@ class MjxPegTrainConfig:
     gae_lambda: float = 0.95
     clip_range: float = 0.2
     target_kl: float = 0.05
-    ent_coef: float = 1e-3
+    ent_coef: float = 0.0
     vf_coef: float = 0.5
     max_grad_norm: float = 0.5
     net_arch: list[int] = field(default_factory=lambda: [256, 256, 256])
