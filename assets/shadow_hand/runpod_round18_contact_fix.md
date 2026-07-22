@@ -217,6 +217,15 @@ fails at `dt >= 0.004`.
 If you want this inside one sleep, drop peg to 100M (~11h) — it had not
 plateaued at 10M, so the extra 50M is speculative anyway.
 
+Clear the previous run's artifacts first, on the pod **and** on the
+volume. `/workspace/runs` is never pruned, so a stale 70M checkpoint set
+sits alongside the new one and the downloaded zip becomes ambiguous about
+which files belong to which run:
+
+```
+rm -rf ~/dexterous_hand/runs /workspace/runs/* && mkdir -p ~/dexterous_hand/runs
+```
+
 ```
 tmux new-session -s train
 cd ~/dexterous_hand
@@ -257,8 +266,17 @@ while [ ! -f ~/dexterous_hand/runs/ALL_DONE ]; do
   cp -rf ~/dexterous_hand/runs/. /workspace/runs/ 2>/dev/null; sleep 600
 done
 cp -rf ~/dexterous_hand/runs/. /workspace/runs/
-runpodctl stop pod "$RUNPOD_POD_ID"
+sync
+runpodctl stop pod "$RUNPOD_POD_ID" || kill -9 1
 ```
+
+The `|| kill -9 1` is load-bearing. The pod-injected `RUNPOD_API_KEY` is
+not accepted for account operations — `runpodctl get pod` and
+`runpodctl config --apiKey` both return `Unauthorized` — so the stop
+command fails and the loop would otherwise exit leaving the pod billing.
+Killing PID 1 exits the container, which ends GPU billing. The pod shows
+`Exited` rather than `Stopped`; that is cosmetic, and `/workspace` is a
+network volume so results survive.
 
 Confirm it is actually running before you sleep — a blank pane looks
 identical to an idle shell:
