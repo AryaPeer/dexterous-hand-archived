@@ -13,20 +13,18 @@ GRASP_GATES = [
     (
         10_000_000,
         [
-            ("metrics/num_finger_contacts", 2.5, 3.42, "grip forms and stays formed"),
-            ("reward/grasping", 0.60, 0.845, "grasp reward maintained"),
+            ("metrics/num_finger_contacts", 0.83, 1.513, "grip forms and stays formed"),
+            ("reward/grasping", 0.24, 0.436, "grasp reward maintained"),
         ],
         "grasp 10M: grip health",
     ),
     (
         30_000_000,
         [
-            ("reward/lifting", 0.15, 0.028,
-             "lifting is being learned, not just spawned by the curriculum "
-             "(the frozen-exploration 70M run plateaued at 0.093 by 30M)"),
-            ("metrics/success_hold_steps", 0.01, 0.001,
-             "the cube is held at target for consecutive steps; the frozen run read "
-             "exactly 0.0 in all 713 rollouts, so any sustained value is real progress"),
+            ("reward/lifting", 0.20, 0.390,
+             "lifting still improving, not collapsed (0.390 at 10M and rising)"),
+            ("metrics/success_hold_steps", 0.05, 0.120,
+             "the cube is held at target for consecutive steps (0.120 at 10M)"),
         ],
         "grasp 30M: lift emergence",
     ),

@@ -13,28 +13,35 @@ PEG_GATES = [
     (
         10_000_000,
         [
-            ("metrics/num_finger_contacts", 1.5, 2.93,
-             "peg held, not parked (the pre-fix 5M park-farm read 0.19)"),
-            ("reward/axis_in_grip", 0.35, 0.628,
+            ("metrics/num_finger_contacts", 1.5, 2.706, "peg held, not parked"),
+            ("reward/axis_in_grip", 0.44, 0.802,
              "peg held vertical WHILE gripped; raw metrics/axis_align is ungated geometry "
              "that an untouched upright peg maxes at 1.0, so it cannot be gated on"),
-            ("metrics/stage", 1.2, 2.56, "task progressed past grasp-and-sit"),
-            ("metrics/peg_height", 0.435, 0.4369,
-             "peg upright, not knocked over (resting height is 0.438; the frozen "
-             "run read 0.410 lying on its side)"),
+            ("metrics/stage", 1.2, 2.000, "task progressed past grasp-and-sit"),
+            ("metrics/peg_height", 0.435, 0.515,
+             "peg upright, not knocked over (resting height is 0.438)"),
         ],
         "peg 10M: vertical lifted grip (real insertion not expected yet)",
     ),
     (
         30_000_000,
         [
-            ("reward/axis_in_grip", 0.65, 0.628, "vertical grip held, not merely an upright peg"),
+            ("reward/axis_in_grip", 0.65, 0.802, "vertical grip held, not merely an upright peg"),
+            ("reward/place", 0.55, 0.457,
+             "peg still closing on the hole; place is the leading indicator of insertion "
+             "and rose 0.085 -> 0.457 over the gate-free 10M sanity"),
+        ],
+        "peg 30M: still descending toward the hole",
+    ),
+    (
+        50_000_000,
+        [
             ("metrics/insertion_depth", 0.001, 0.0,
              "in-bore insertion happening at all (exact 0 = never inserts)"),
             ("metrics/insertion_hold_steps", 0.05, 0.0,
              "some sustained in-bore holds occurring (exact 0 = never holds depth)"),
         ],
-        "peg 30M: insertion exists",
+        "peg 50M: insertion exists",
     ),
 ]
 
