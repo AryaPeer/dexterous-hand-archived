@@ -96,10 +96,23 @@ print("max simultaneous active contacts per env:", mx)
 EOF
 ```
 
-If that number is anywhere near 48, raise `mjx_max_contact_points` in
-`config.py` to ~2x it and re-run parity. Culling that clips real
-finger/object contacts would silently re-break `grasping` in the opposite
-direction (under-counting instead of over-counting).
+Measured 2026-07-22 on a 4090, 64 envs x 300 random-action steps:
+
+| task | true max object contacts | max active | old cap | verdict |
+|---|---|---|---|---|
+| grasp | 57 | 83 | 48 | was clipping, now 96/256 |
+| peg | 10 | 22 | 48 | never clipped, unchanged |
+
+`mjx_max_contact_points` is a per-collision-function cap, NOT the array
+size, so a total active count above it is normal. The tell for clipping
+is the per-object count landing *exactly* on the cap: grasp read exactly
+48, and raising the cap moved it to 57. Peg reads 10 against a cap of 48
+and needs nothing.
+
+To re-derive after any scene change, run the probe at a generous cap
+(192/768) to find the true maximum, then set the cap to ~1.5x it. Never
+read the number at the default cap and conclude "fine" — a clipped value
+looks like a stable measurement.
 
 ## 4. Stage A — gate-free sanity to re-derive floors (~2h)
 

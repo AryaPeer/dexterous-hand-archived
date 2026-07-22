@@ -23,8 +23,8 @@ class SceneConfig:
     frame_skip: int = 8
     solver_iterations: int = 8
     ls_iterations: int = 8
-    mjx_max_geom_pairs: int | None = 128
-    mjx_max_contact_points: int | None = 48
+    mjx_max_geom_pairs: int | None = 256
+    mjx_max_contact_points: int | None = 96
 
 
 @dataclass
