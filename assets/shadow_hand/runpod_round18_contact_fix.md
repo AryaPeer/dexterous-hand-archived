@@ -75,8 +75,8 @@ with the pinned jaxlib. Destroy the pod and redeploy — do not debug it.
 ### 3b. Contact-culling headroom (NEW — this fix depends on it)
 
 The reward now reads `mjx_data.contact` directly, so anything MJX culls
-is invisible to it. `mjx_max_contact_points` is 48 and
-`mjx_max_geom_pairs` is 128 (grasp) / 384 (peg).
+is invisible to it. `mjx_max_contact_points` / `mjx_max_geom_pairs` are
+96 / 256 (grasp, raised in `903d449`) and 48 / 384 (peg, unchanged).
 
 ```
 uv run python - <<'EOF'
