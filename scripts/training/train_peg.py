@@ -13,13 +13,13 @@ PEG_GATES = [
     (
         10_000_000,
         [
-            ("metrics/num_finger_contacts", 1.5, 2.60,
+            ("metrics/num_finger_contacts", 1.5, 2.93,
              "peg held, not parked (the pre-fix 5M park-farm read 0.19)"),
-            ("metrics/axis_align", 0.70, 0.957,
-             "peg held vertical; the frozen-exploration run collapsed to 0.10 here "
-             "and this is the gate that correctly caught it"),
-            ("metrics/stage", 1.2, 0.946, "task progressed past grasp-and-sit"),
-            ("metrics/peg_height", 0.435, 0.4366,
+            ("reward/axis_in_grip", 0.35, 0.628,
+             "peg held vertical WHILE gripped; raw metrics/axis_align is ungated geometry "
+             "that an untouched upright peg maxes at 1.0, so it cannot be gated on"),
+            ("metrics/stage", 1.2, 2.56, "task progressed past grasp-and-sit"),
+            ("metrics/peg_height", 0.435, 0.4369,
              "peg upright, not knocked over (resting height is 0.438; the frozen "
              "run read 0.410 lying on its side)"),
         ],
@@ -28,7 +28,7 @@ PEG_GATES = [
     (
         30_000_000,
         [
-            ("metrics/axis_align", 0.80, 0.90, "vertical grip held"),
+            ("reward/axis_in_grip", 0.65, 0.628, "vertical grip held, not merely an upright peg"),
             ("metrics/insertion_depth", 0.001, 0.0,
              "in-bore insertion happening at all (exact 0 = never inserts)"),
             ("metrics/insertion_hold_steps", 0.05, 0.0,
@@ -42,7 +42,7 @@ PEG_GATES = [
 def train(config: MjxPegTrainConfig) -> None:
     curriculum_stages = scale_stage_starts(
         stages=config.curriculum_stages,
-        total_timesteps=config.total_timesteps,
+        total_timesteps=config.curriculum_schedule_timesteps or config.total_timesteps,
         reference_total_timesteps=config.curriculum_reference_timesteps,
     )
     run_training(
@@ -70,11 +70,19 @@ def parse_args() -> MjxPegTrainConfig:
         action="store_true",
         help="Disable the 10M/30M milestone compute-saver gate (let the run go to the end).",
     )
+    parser.add_argument(
+        "--curriculum-schedule-timesteps",
+        type=int,
+        default=defaults.curriculum_schedule_timesteps,
+        help="Scale the curriculum as if the run were this long. Set it to the long run's "
+        "length when sanity-running, so metrics read at step N are comparable to it.",
+    )
     args = parser.parse_args()
 
     return MjxPegTrainConfig(
         num_envs=args.num_envs,
         total_timesteps=args.total_timesteps,
+        curriculum_schedule_timesteps=args.curriculum_schedule_timesteps,
         gate_enabled=not args.no_gate,
         learning_rate=args.learning_rate,
         batch_size=args.batch_size,

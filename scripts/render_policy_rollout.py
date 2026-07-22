@@ -17,6 +17,7 @@ def _render_task(
     out_path: Path,
     steps: int | None,
     seed: int,
+    p_pre_grasped: float,
 ) -> dict[str, float]:
     from sbx import PPO
     from stable_baselines3.common.vec_env import VecMonitor, VecNormalize
@@ -49,6 +50,17 @@ def _render_task(
         steps = config.max_episode_steps
 
     raw_env: Any = env_cls.from_config(config)
+
+    # from_config seeds the curriculum's FIRST (easiest) stage; render the final stage instead
+    if config.curriculum_stages:
+        final_stage = config.curriculum_stages[-1]
+        if task == "peg":
+            raw_env.set_curriculum_params(
+                clearance=float(final_stage[1]), p_pre_grasped=p_pre_grasped
+            )
+        else:
+            raw_env.set_curriculum_params(p_pre_grasped=p_pre_grasped)
+
     env: Any = VecMonitor(raw_env)
     env = VecNormalize.load(str(vec_normalize_path), env)
     env.training = False
@@ -98,6 +110,7 @@ def main() -> None:
     ap.add_argument("--out-dir", type=Path, default=Path("runs/render_overnight"))
     ap.add_argument("--steps", type=int, default=None)
     ap.add_argument("--seed", type=int, default=0)
+    ap.add_argument("--p-pre-grasped", type=float, default=0.0)
     args = ap.parse_args()
 
     tasks = ["grasp", "peg"] if args.task == "both" else [args.task]
@@ -107,8 +120,14 @@ def main() -> None:
         if model_path is None or vn_path is None:
             raise SystemExit(f"--{task}-model and --{task}-vec-normalize are required for task={task}")
         out_path = args.out_dir / f"{task}_rollout.mp4"
-        print(f"[{task}] rendering deterministic rollout -> {out_path}", flush=True)
-        summary = _render_task(task, model_path, vn_path, out_path, args.steps, args.seed)
+        print(
+            f"[{task}] rendering deterministic rollout (p_pre_grasped="
+            f"{args.p_pre_grasped:.2f}) -> {out_path}",
+            flush=True,
+        )
+        summary = _render_task(
+            task, model_path, vn_path, out_path, args.steps, args.seed, args.p_pre_grasped
+        )
         print(f"[{task}] done. per-step metric means over the rollout:")
         for k, v in summary.items():
             print(f"    {k:36s} = {v:.4f}")

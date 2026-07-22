@@ -155,6 +155,7 @@ class MjxGraspTrainConfig:
     reward_config: RewardConfig = field(default_factory=RewardConfig)
     dr: DomainRandomization = field(default_factory=DomainRandomization)
     curriculum_reference_timesteps: int = 70_000_000
+    curriculum_schedule_timesteps: int = 0
     curriculum_stages: list[tuple[int, float]] = field(
         default_factory=lambda: [
             (0, 0.5),
@@ -200,6 +201,7 @@ class MjxPegTrainConfig:
     reward_config: PegRewardConfig = field(default_factory=_mjx_peg_reward_config)
     dr: DomainRandomization = field(default_factory=lambda: DomainRandomization(enabled=False))
     curriculum_reference_timesteps: int = 100_000_000
+    curriculum_schedule_timesteps: int = 0
     curriculum_stages: list[tuple[int, float, float]] = field(
         default_factory=lambda: [
             (0, 0.004, 1.0),

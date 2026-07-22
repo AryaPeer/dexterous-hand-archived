@@ -1,14 +1,51 @@
+from typing import Any
+
 import jax.numpy as jnp
+
+
+def get_contact_arrays(mjx_data: Any) -> tuple[jnp.ndarray, jnp.ndarray]:
+    """Contact geom pairs and distances, via _impl on mujoco>=3.7 and the old path before it."""
+    impl = getattr(mjx_data, "_impl", None)
+    contact = impl.contact if impl is not None else mjx_data.contact
+    return contact.geom, contact.dist
 
 
 def get_finger_touch_from_sensors(
     sensordata: jnp.ndarray,
     finger_touch_adr: jnp.ndarray,
 ) -> tuple[jnp.ndarray, jnp.ndarray]:
-    """Per-finger touch values and boolean contact mask from the sensor buffer."""
+    """Per-finger touch values from the sensor buffer; the mask fires on ANY geom, table included."""
     touch_vals = sensordata[finger_touch_adr]
     contact_mask = touch_vals > 0.0
     return touch_vals, contact_mask
+
+
+def get_finger_object_contact_mask(
+    contact_geom: jnp.ndarray,
+    contact_dist: jnp.ndarray,
+    finger_geom_ids: jnp.ndarray,
+    object_geom_ids: jnp.ndarray,
+) -> jnp.ndarray:
+    """Per-finger mask of contacts against the object geoms only. Pad id arrays with -1."""
+    g1 = contact_geom[:, 0]
+    g2 = contact_geom[:, 1]
+    active = contact_dist < 0.0
+
+    is_obj1 = (g1[:, None] == object_geom_ids[None, :]).any(axis=-1)
+    is_obj2 = (g2[:, None] == object_geom_ids[None, :]).any(axis=-1)
+    is_fin1 = (g1[None, :, None] == finger_geom_ids[:, None, :]).any(axis=-1)
+    is_fin2 = (g2[None, :, None] == finger_geom_ids[:, None, :]).any(axis=-1)
+
+    pair = (is_fin1 & is_obj2[None, :]) | (is_fin2 & is_obj1[None, :])
+    return (pair & active[None, :]).any(axis=-1)
+
+
+def pad_id_groups(groups: list[set[int]]) -> jnp.ndarray:
+    """Ragged geom-id groups -> a dense (n_groups, max_len) array padded with -1."""
+    width = max((len(g) for g in groups), default=0)
+    width = max(width, 1)
+    rows = [sorted(g) + [-1] * (width - len(g)) for g in groups]
+    return jnp.asarray(rows, dtype=jnp.int32)
 
 
 def get_object_state_jax(

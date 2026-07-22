@@ -24,12 +24,15 @@ from dexterous_hand.rewards.peg_reward import (
 )
 from dexterous_hand.utils.mjx_helpers import (
     get_body_axis_jax,
+    get_contact_arrays,
+    get_finger_object_contact_mask,
     get_finger_touch_from_sensors,
     get_fingertip_positions_jax,
     get_insertion_depth_jax,
     get_object_state_jax,
     get_palm_position_jax,
     get_peg_hole_relative_jax,
+    pad_id_groups,
 )
 
 
@@ -113,6 +116,8 @@ class ShadowHandPegMjxEnv(MjxVecEnv):
             self._nm.sensor_map.wall_force_adr, dtype=jnp.int32
         )
         self._fingertip_site_ids = jnp.asarray(self._nm.fingertip_site_ids, dtype=jnp.int32)
+        self._finger_geom_ids = pad_id_groups(self._nm.finger_geom_ids_per_finger)
+        self._peg_geom_ids = jnp.asarray([self._nm.peg_geom_id], dtype=jnp.int32)
         self._peg_length = (
             self.scene_config.peg_half_length * 2.0 + self.scene_config.peg_radius * 2.0
         )
@@ -249,8 +254,13 @@ class ShadowHandPegMjxEnv(MjxVecEnv):
             nm.peg_qvel_start,
         )
 
-        touch_vals, contact_mask = get_finger_touch_from_sensors(
-            mjx_data.sensordata, self._finger_touch_adr
+        touch_vals, _ = get_finger_touch_from_sensors(mjx_data.sensordata, self._finger_touch_adr)
+        contact_geom, contact_dist = get_contact_arrays(mjx_data)
+        contact_mask = get_finger_object_contact_mask(
+            contact_geom,
+            contact_dist,
+            self._finger_geom_ids,
+            self._peg_geom_ids,
         )
         n_contacts = jnp.sum(contact_mask).astype(jnp.float32)
 

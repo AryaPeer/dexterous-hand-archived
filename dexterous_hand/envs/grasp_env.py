@@ -28,10 +28,12 @@ from dexterous_hand.rewards.grasp_reward import (
     init_grasp_reward_state,
 )
 from dexterous_hand.utils.mjx_helpers import (
-    get_finger_touch_from_sensors,
+    get_contact_arrays,
+    get_finger_object_contact_mask,
     get_fingertip_positions_jax,
     get_object_state_jax,
     get_palm_position_jax,
+    pad_id_groups,
 )
 
 
@@ -78,6 +80,8 @@ class ShadowHandGraspMjxEnv(MjxVecEnv):
             self._nm.sensor_map.finger_touch_adr, dtype=jnp.int32
         )
         self._fingertip_site_ids = jnp.asarray(self._nm.fingertip_site_ids, dtype=jnp.int32)
+        self._finger_geom_ids = pad_id_groups(self._nm.finger_geom_ids_per_finger)
+        self._object_geom_ids = jnp.asarray([self._nm.object_geom_id], dtype=jnp.int32)
 
         obj_geom_id = self._nm.object_geom_id
         self._object_half_height = float(
@@ -180,7 +184,13 @@ class ShadowHandGraspMjxEnv(MjxVecEnv):
             nm.obj_qvel_start,
         )
 
-        _, contact_mask = get_finger_touch_from_sensors(mjx_data.sensordata, self._finger_touch_adr)
+        contact_geom, contact_dist = get_contact_arrays(mjx_data)
+        contact_mask = get_finger_object_contact_mask(
+            contact_geom,
+            contact_dist,
+            self._finger_geom_ids,
+            self._object_geom_ids,
+        )
 
         total, new_reward_state, info = grasp_reward(
             state=env_state.reward_state,

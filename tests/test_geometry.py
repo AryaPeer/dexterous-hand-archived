@@ -500,3 +500,81 @@ def test_grasp_lift_reaches_target_height():
         f"cube did not stay held at height (contact on {held}/40 final steps) "
         f"— the sustained hold that `holding` pays for is not achievable"
     )
+
+
+def test_contact_mask_helper_excludes_non_object_geoms():
+    """The mask must count finger<->object pairs only, never finger<->table."""
+    from dexterous_hand.utils.mjx_helpers import (
+        get_finger_object_contact_mask,
+        pad_id_groups,
+    )
+
+    finger_ids = pad_id_groups([{10, 11}, {20}, {30}])
+    object_ids = jnp.asarray([99], dtype=jnp.int32)
+    # finger0<->table, finger1<->object, finger2<->object but not penetrating
+    contact_geom = jnp.asarray([[10, 5], [99, 20], [30, 99]], dtype=jnp.int32)
+    contact_dist = jnp.asarray([-0.001, -0.001, 0.002], dtype=jnp.float32)
+
+    mask = get_finger_object_contact_mask(contact_geom, contact_dist, finger_ids, object_ids)
+    assert mask.tolist() == [False, True, False]
+
+
+def test_table_press_with_distant_cube_counts_zero_grasp_contacts():
+    """Fingers pressed on the table must earn no grasp contacts (Apr-20 regression guard)."""
+    from dexterous_hand.utils.mjx_helpers import (
+        get_finger_object_contact_mask,
+        pad_id_groups,
+    )
+
+    scfg = SceneConfig()
+    model, data, nm = build_scene(scfg)
+
+    gt, gs = OBJECT_TYPES["large_cube"]
+    obj_z0 = scfg.table_height + get_object_half_height(gt, gs) + 0.001
+    s = nm.obj_qpos_start
+    data.qpos[s : s + 3] = [0.30, 0.28, obj_z0]
+
+    zid = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_JOINT, "slide_z")
+    zadr = model.jnt_qposadr[zid]
+    data.qpos[zadr] = model.jnt_range[zid][0]
+    apply_flexion_bias(data.qpos, model, bias_map=CUBE_GRIP_BIAS)
+    data.qvel[:] = 0.0
+
+    ctrl_low, ctrl_high = model.actuator_ctrlrange.T
+    data.ctrl[:] = np.clip(0.0, ctrl_low, ctrl_high)
+    for _ in range(200):
+        mujoco.mj_step(model, data)
+
+    hand_geoms: set[int] = set()
+    for gset in nm.finger_geom_ids_per_finger:
+        hand_geoms |= gset
+    table_contacts = sum(
+        1
+        for ci in range(data.ncon)
+        if (data.contact[ci].geom1 in hand_geoms or data.contact[ci].geom2 in hand_geoms)
+        and nm.object_geom_id not in (data.contact[ci].geom1, data.contact[ci].geom2)
+    )
+    assert table_contacts > 0, "setup failed: hand is not touching the table at all"
+
+    from dexterous_hand.utils.mjx_helpers import get_finger_touch_from_sensors
+
+    _, sensor_mask = get_finger_touch_from_sensors(
+        jnp.asarray(data.sensordata),
+        jnp.asarray(nm.sensor_map.finger_touch_adr, dtype=jnp.int32),
+    )
+    assert int(sensor_mask.sum()) > 0, (
+        "setup failed: the touch sensors do not fire here, so this state no longer "
+        "reproduces the Apr-20 regression and the guard below proves nothing"
+    )
+
+    mask = get_finger_object_contact_mask(
+        jnp.asarray(data.contact.geom[: data.ncon], dtype=jnp.int32),
+        jnp.asarray(data.contact.dist[: data.ncon], dtype=jnp.float32),
+        pad_id_groups(nm.finger_geom_ids_per_finger),
+        jnp.asarray([nm.object_geom_id], dtype=jnp.int32),
+    )
+    assert int(mask.sum()) == 0, (
+        f"{int(mask.sum())} grasp contacts counted while the cube is 30cm away and the hand "
+        f"is only touching the table ({table_contacts} table contacts) — contact detection "
+        f"is not filtered to the object geom"
+    )

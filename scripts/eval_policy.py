@@ -16,7 +16,16 @@ def main() -> None:
     parser.add_argument("-n", "--episodes", type=int, default=64)
     parser.add_argument("--num-envs", type=int, default=64)
     parser.add_argument("--seed", type=int, default=123)
+    parser.add_argument(
+        "--p-pre-grasped",
+        type=float,
+        default=0.0,
+        help="Fraction of eval episodes spawned already gripping the object. Default 0.0 "
+        "measures the real task; pass the training stage value to reproduce a train-time number.",
+    )
     args = parser.parse_args()
+    if not 0.0 <= args.p_pre_grasped <= 1.0:
+        parser.error("--p-pre-grasped must be in [0, 1]")
 
     from sbx import PPO
     from stable_baselines3.common.vec_env import VecMonitor, VecNormalize
@@ -44,6 +53,18 @@ def main() -> None:
     config.obs_noise_std = 0.0
 
     env: Any = env_cls.from_config(config)
+
+    # from_config seeds the curriculum's FIRST (easiest) stage; eval the final stage instead
+    if config.curriculum_stages:
+        final_stage = config.curriculum_stages[-1]
+        if args.task == "peg":
+            env.set_curriculum_params(
+                clearance=float(final_stage[1]), p_pre_grasped=args.p_pre_grasped
+            )
+        else:
+            env.set_curriculum_params(p_pre_grasped=args.p_pre_grasped)
+    print(f"[eval] p_pre_grasped={args.p_pre_grasped:.2f}")
+
     env = VecMonitor(env)
     env = VecNormalize.load(str(Path(args.vec_normalize_path).expanduser().resolve()), env)
     env.training = False
