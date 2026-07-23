@@ -16,7 +16,7 @@ class SceneConfig:
     mount_height: float = 0.78
     table_height: float = 0.4
     table_half_size: float = 0.25
-    object_half_extent: float = 0.02
+    object_half_extent: float = 0.025
     object_mass: float = 0.1
     object_friction: tuple[float, float, float] = (1.0, 0.005, 0.001)
     action_smoothing_alpha: float = 0.2

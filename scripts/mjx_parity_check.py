@@ -12,11 +12,9 @@ from dexterous_hand.config import PegSceneConfig, SceneConfig
 from dexterous_hand.envs.peg_scene_builder import build_peg_scene
 from dexterous_hand.envs.scene_builder import (
     GRIP_BIAS,
-    OBJECT_TYPES,
     apply_flexion_bias,
     build_grip_ctrl,
     build_scene,
-    get_object_half_height,
 )
 
 GRASP_LIFT_BAR = 0.15
@@ -146,7 +144,7 @@ def _set_qpos_joint(model: mujoco.MjModel, qpos: np.ndarray, name: str, val: flo
 
 CUBE_GRIP_SEED = {
     "sx": 0.115, "sy": -0.017, "z0": -0.02,
-    "j3": 1.0, "j12": 0.5, "thj5": 0.5, "th1": 0.7, "squeeze": 0.4,
+    "j3": 1.0, "j12": 0.5, "thj5": 0.5, "th1": 0.7, "squeeze": 1.0,
 }
 
 
@@ -168,8 +166,7 @@ def run_grasp(engine_cls) -> dict[str, float]:
     _set_qpos_joint(model, qpos, "rh_THJ4", 1.2)
     _set_qpos_joint(model, qpos, "rh_THJ2", 0.3)
     _set_qpos_joint(model, qpos, "rh_THJ1", p["th1"])
-    gt, gs = OBJECT_TYPES["large_cube"]
-    obj_z0 = cfg.table_height + get_object_half_height(gt, gs) + 0.001
+    obj_z0 = cfg.table_height + cfg.object_half_extent + 0.001
     s = nm.obj_qpos_start
     qpos[s : s + 3] = [0.075, 0.0, obj_z0]
     qpos[s + 3 : s + 7] = [1.0, 0.0, 0.0, 0.0]
