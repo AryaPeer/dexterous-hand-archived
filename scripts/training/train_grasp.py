@@ -2,10 +2,6 @@
 import argparse
 
 from dexterous_hand.config import MjxGraspTrainConfig
-from dexterous_hand.curriculum.callbacks import (
-    GraspCurriculumCallback,
-    scale_stage_starts,
-)
 from dexterous_hand.envs.grasp_env import ShadowHandGraspMjxEnv
 from scripts.training._common import run_training
 
@@ -32,19 +28,12 @@ GRASP_GATES = [
 
 
 def train(config: MjxGraspTrainConfig) -> None:
-    curriculum_stages = scale_stage_starts(
-        stages=config.curriculum_stages,
-        total_timesteps=config.curriculum_schedule_timesteps or config.total_timesteps,
-        reference_total_timesteps=config.curriculum_reference_timesteps,
-    )
     run_training(
         config=config,
         env_cls=ShadowHandGraspMjxEnv,
         run_prefix="grasp_mjx",
         wandb_name=f"grasp-mjx-{config.num_envs}env",
         gates=GRASP_GATES,
-        extra_callbacks=[GraspCurriculumCallback(stages=curriculum_stages, verbose=1)],
-        extra_wandb_config={"effective_curriculum_stages": curriculum_stages},
     )
 
 

@@ -385,7 +385,8 @@ def _cube_grip_ctrl(model, p: dict, squeeze: float, z: float) -> np.ndarray:
 
 def test_pre_grasped_spawn_starts_with_formed_grip():
     """CUBE_GRIP_BIAS + CUBE_GRIP_SPAWN_XY must spawn fingers already on the cube."""
-    scfg = SceneConfig()
+    gt, gs = OBJECT_TYPES["large_cube"]
+    scfg = SceneConfig(object_half_extent=gs[0])
     model, data, nm = build_scene(scfg)
 
     qpos = data.qpos.copy()

@@ -68,7 +68,8 @@ def build_scene(
     attach_hand(spec, mount_site)
     add_fingertip_sites_and_sensors(spec)
 
-    default_type, default_size = OBJECT_TYPES["large_cube"]
+    default_type, _ = OBJECT_TYPES["large_cube"]
+    default_size = [config.object_half_extent] * 3
     obj_body = spec.worldbody.add_body(
         name="object",
         pos=[0.0, 0.0, config.table_height + default_size[2]],

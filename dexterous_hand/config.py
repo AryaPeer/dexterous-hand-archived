@@ -16,6 +16,7 @@ class SceneConfig:
     mount_height: float = 0.78
     table_height: float = 0.4
     table_half_size: float = 0.25
+    object_half_extent: float = 0.02
     object_mass: float = 0.1
     object_friction: tuple[float, float, float] = (1.0, 0.005, 0.001)
     action_smoothing_alpha: float = 0.2
@@ -158,11 +159,7 @@ class MjxGraspTrainConfig:
     curriculum_schedule_timesteps: int = 0
     curriculum_stages: list[tuple[int, float]] = field(
         default_factory=lambda: [
-            (0, 0.5),
-            (10_000_000, 0.4),
-            (25_000_000, 0.3),
-            (40_000_000, 0.2),
-            (55_000_000, 0.1),
+            (0, 0.0),
         ]
     )
 
