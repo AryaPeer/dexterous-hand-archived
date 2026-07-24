@@ -7,7 +7,7 @@ from pathlib import Path
 import mujoco
 import numpy as np
 
-from dexterous_hand.config import PegSceneConfig, SceneConfig
+from dexterous_hand.config import PegSceneConfig, PickPlaceSceneConfig, SceneConfig
 
 ASSETS_DIR = Path(__file__).resolve().parent.parent.parent / "assets" / "shadow_hand"
 
@@ -147,7 +147,7 @@ class SensorMap:
         return SensorMap(finger_touch_adr=[], wall_force_adr=[])
 
 
-def init_spec_options(spec: mujoco.MjSpec, config: SceneConfig | PegSceneConfig) -> None:
+def init_spec_options(spec: mujoco.MjSpec, config: SceneConfig | PegSceneConfig | PickPlaceSceneConfig) -> None:
     """Timestep, gravity, contact model, solver caps, integrator, culling."""
     spec.option.timestep = config.sim_timestep
     spec.option.gravity = [0.0, 0.0, -9.81]
@@ -164,7 +164,7 @@ def init_spec_options(spec: mujoco.MjSpec, config: SceneConfig | PegSceneConfig)
     spec.stat.center = [0.0, 0.0, config.table_height]
 
 
-def add_workspace(spec: mujoco.MjSpec, config: SceneConfig | PegSceneConfig) -> None:
+def add_workspace(spec: mujoco.MjSpec, config: SceneConfig | PegSceneConfig | PickPlaceSceneConfig) -> None:
     """Floor plane, table box, light, tracking camera."""
     spec.worldbody.add_geom(
         name="floor",
@@ -205,7 +205,7 @@ def add_workspace(spec: mujoco.MjSpec, config: SceneConfig | PegSceneConfig) -> 
 
 def add_hand_slider(
     spec: mujoco.MjSpec,
-    config: SceneConfig | PegSceneConfig,
+    config: SceneConfig | PegSceneConfig | PickPlaceSceneConfig,
     *,
     slide_z_range: tuple[float, float],
     xy_forcerange: float,

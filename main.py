@@ -5,6 +5,7 @@ Usage: python main.py <command> [options]
 
   train-grasp-mjx        Train grasping (SBX PPO on MJX)
   train-peg-mjx          Train peg-in-hole (SBX PPO on MJX)
+  train-pickplace-mjx    Train pick-and-place (SBX PPO on MJX)
   resume-grasp-mjx       Resume grasping from a saved checkpoint
   resume-peg-mjx         Resume peg-in-hole from a saved checkpoint
 """
@@ -12,6 +13,7 @@ Usage: python main.py <command> [options]
 COMMANDS = {
     "train-grasp-mjx": "scripts.training.train_grasp",
     "train-peg-mjx": "scripts.training.train_peg",
+    "train-pickplace-mjx": "scripts.training.train_pickplace",
     "resume-grasp-mjx": "scripts.training.resume_grasp",
     "resume-peg-mjx": "scripts.training.resume_peg",
 }

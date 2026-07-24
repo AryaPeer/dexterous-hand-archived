@@ -8,8 +8,9 @@ from typing import Any
 import mujoco
 import numpy as np
 
-from dexterous_hand.config import PegSceneConfig, SceneConfig
+from dexterous_hand.config import PegSceneConfig, PickPlaceSceneConfig, SceneConfig
 from dexterous_hand.envs.peg_scene_builder import build_peg_scene
+from dexterous_hand.envs.pickplace_scene_builder import build_pickplace_scene
 from dexterous_hand.envs.scene_builder import (
     GRIP_BIAS,
     apply_flexion_bias,
@@ -20,6 +21,8 @@ from dexterous_hand.envs.scene_builder import (
 GRASP_LIFT_BAR = 0.15
 PEG_SETTLE_BAR = 0.73
 PEG_HOLD_BAR = 0.70
+PICKPLACE_PLACE_BAR = 0.05
+PICKPLACE_Z_BAR = 0.02
 
 
 
@@ -201,6 +204,78 @@ def run_grasp(engine_cls) -> dict[str, float]:
     return {"final_lift": final_lift, "nfc_end": float(nfc)}
 
 
+def run_pickplace(engine_cls) -> dict[str, float]:
+    cfg = PickPlaceSceneConfig()
+    model, data, nm = build_pickplace_scene(cfg)
+    eng = engine_cls(model, cfg.frame_skip)
+    p = CUBE_GRIP_SEED
+    source_x, source_y = 0.075, 0.0
+    goal_x, goal_y = cfg.goal_nominal_xy
+    carry_sy = p["sy"] + (goal_y - source_y)
+
+    qpos = np.array(data.qpos)
+    _set_qpos_joint(model, qpos, "slide_x", p["sx"])
+    _set_qpos_joint(model, qpos, "slide_y", p["sy"])
+    _set_qpos_joint(model, qpos, "slide_z", p["z0"])
+    for j in ("FF", "MF", "RF", "LF"):
+        _set_qpos_joint(model, qpos, f"rh_{j}J3", p["j3"])
+        _set_qpos_joint(model, qpos, f"rh_{j}J2", p["j12"])
+        _set_qpos_joint(model, qpos, f"rh_{j}J1", p["j12"])
+    _set_qpos_joint(model, qpos, "rh_THJ5", p["thj5"])
+    _set_qpos_joint(model, qpos, "rh_THJ4", 1.2)
+    _set_qpos_joint(model, qpos, "rh_THJ2", 0.3)
+    _set_qpos_joint(model, qpos, "rh_THJ1", p["th1"])
+    obj_z0 = cfg.table_height + cfg.object_half_extent + 0.001
+    s = nm.obj_qpos_start
+    qpos[s : s + 3] = [source_x, source_y, obj_z0]
+    qpos[s + 3 : s + 7] = [1.0, 0.0, 0.0, 0.0]
+    eng.set_state(qpos)
+
+    def grip_ctrl(squeeze: float, z: float, sy: float, open_frac: float = 0.0) -> np.ndarray:
+        ctrl = np.zeros(model.nu)
+        _set_ctrl(model, ctrl, "slide_x_act", p["sx"])
+        _set_ctrl(model, ctrl, "slide_y_act", sy)
+        _set_ctrl(model, ctrl, "slide_z_act", z)
+        keep = 1.0 - open_frac
+        j3 = p["j3"] * keep
+        j0 = p["j12"] * 2 * keep
+        sq = squeeze * keep
+        for an in ("rh_A_FFJ3", "rh_A_MFJ3", "rh_A_RFJ3", "rh_A_LFJ3"):
+            _set_ctrl(model, ctrl, an, j3 + sq)
+        for an in ("rh_A_FFJ0", "rh_A_MFJ0", "rh_A_RFJ0", "rh_A_LFJ0"):
+            _set_ctrl(model, ctrl, an, j0 + sq)
+        _set_ctrl(model, ctrl, "rh_A_THJ5", p["thj5"])
+        _set_ctrl(model, ctrl, "rh_A_THJ4", 1.2)
+        _set_ctrl(model, ctrl, "rh_A_THJ2", 0.3)
+        _set_ctrl(model, ctrl, "rh_A_THJ1", (p["th1"] + sq) * keep)
+        return ctrl
+
+    z_lift = p["z0"] + 0.12
+    for step in range(30):
+        eng.ctrl_step(grip_ctrl(p["squeeze"] * min(step / 10.0, 1.0), p["z0"], p["sy"]))
+    for step in range(40):
+        t = step / 40.0
+        eng.ctrl_step(grip_ctrl(p["squeeze"], p["z0"] + (z_lift - p["z0"]) * t, p["sy"]))
+    for step in range(50):
+        t = step / 50.0
+        eng.ctrl_step(grip_ctrl(p["squeeze"], z_lift, p["sy"] + (carry_sy - p["sy"]) * t))
+    for step in range(40):
+        t = step / 40.0
+        eng.ctrl_step(grip_ctrl(p["squeeze"], z_lift + (p["z0"] - z_lift) * t, carry_sy))
+    for step in range(20):
+        t = step / 20.0
+        eng.ctrl_step(grip_ctrl(p["squeeze"], p["z0"], carry_sy, open_frac=min(t * 2.0, 1.0)))
+    for _ in range(30):
+        eng.ctrl_step(grip_ctrl(0.0, p["z0"] + 0.10, carry_sy, open_frac=1.0))
+    for _ in range(40):
+        eng.ctrl_step(grip_ctrl(0.0, p["z0"] + 0.10, carry_sy, open_frac=1.0))
+
+    obj = eng.xpos(nm.object_body_id)
+    place_dist = float(np.linalg.norm(obj[:2] - np.array([goal_x, goal_y])))
+    z_err = float(abs(obj[2] - (cfg.table_height + cfg.object_half_extent)))
+    return {"place_dist": place_dist, "obj_z_err": z_err}
+
+
 
 
 def run_peg(engine_cls) -> dict[str, float]:
@@ -316,7 +391,7 @@ def main() -> None:
 
     results: dict[str, dict[str, dict[str, float]]] = {}
     for eng_cls in engines:
-        for task, fn in (("grasp", run_grasp), ("peg", run_peg)):
+        for task, fn in (("grasp", run_grasp), ("peg", run_peg), ("pickplace", run_pickplace)):
             t0 = time.time()
             print(f"[{eng_cls.name}] {task} trajectory ...", flush=True)
             r = fn(eng_cls)
@@ -329,16 +404,22 @@ def main() -> None:
         for name, r in per_engine.items():
             if task == "grasp":
                 passed = r["final_lift"] >= GRASP_LIFT_BAR and r["nfc_end"] >= 2
-                print(f"  grasp [{name}]: final_lift={r['final_lift']*1000:6.1f}mm "
+                print(f"  grasp     [{name}]: final_lift={r['final_lift']*1000:6.1f}mm "
                       f"(bar {GRASP_LIFT_BAR*1000:.0f}) nfc_end={int(r['nfc_end'])} "
                       f"({r['seconds']:.0f}s)  {'PASS' if passed else 'FAIL'}")
-            else:
+            elif task == "peg":
                 passed = (r["settled_frac"] >= PEG_SETTLE_BAR
                           and r["min_hold_frac"] >= PEG_HOLD_BAR)
-                print(f"  peg   [{name}]: settled={r['settled_frac']:.3f} "
+                print(f"  peg       [{name}]: settled={r['settled_frac']:.3f} "
                       f"(bar {PEG_SETTLE_BAR}) min_hold={r['min_hold_frac']:.3f} "
                       f"(bar {PEG_HOLD_BAR}) ({r['seconds']:.0f}s)  "
                       f"{'PASS' if passed else 'FAIL'}")
+            else:
+                passed = (r["place_dist"] <= PICKPLACE_PLACE_BAR
+                          and r["obj_z_err"] <= PICKPLACE_Z_BAR)
+                print(f"  pickplace [{name}]: place_dist={r['place_dist']*1000:6.1f}mm "
+                      f"(bar {PICKPLACE_PLACE_BAR*1000:.0f}) z_err={r['obj_z_err']*1000:.1f}mm "
+                      f"({r['seconds']:.0f}s)  {'PASS' if passed else 'FAIL'}")
             ok &= passed
 
     print()

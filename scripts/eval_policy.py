@@ -10,7 +10,7 @@ import numpy as np
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    parser.add_argument("--task", choices=("grasp", "peg"), required=True)
+    parser.add_argument("--task", choices=("grasp", "peg", "pickplace"), required=True)
     parser.add_argument("--model-path", type=str, required=True)
     parser.add_argument("--vec-normalize-path", type=str, required=True)
     parser.add_argument("-n", "--episodes", type=int, default=64)
@@ -39,11 +39,16 @@ def main() -> None:
         from dexterous_hand.envs.grasp_env import ShadowHandGraspMjxEnv
 
         config_cls, env_cls = MjxGraspTrainConfig, ShadowHandGraspMjxEnv
-    else:
+    elif args.task == "peg":
         from dexterous_hand.config import MjxPegTrainConfig
         from dexterous_hand.envs.peg_env import ShadowHandPegMjxEnv
 
         config_cls, env_cls = MjxPegTrainConfig, ShadowHandPegMjxEnv
+    else:
+        from dexterous_hand.config import MjxPickPlaceTrainConfig
+        from dexterous_hand.envs.pickplace_env import ShadowHandPickPlaceMjxEnv
+
+        config_cls, env_cls = MjxPickPlaceTrainConfig, ShadowHandPickPlaceMjxEnv
 
     model_path = Path(args.model_path).expanduser().resolve()
     config = config_cls()
@@ -55,7 +60,7 @@ def main() -> None:
     env: Any = env_cls.from_config(config)
 
     # from_config seeds the curriculum's FIRST (easiest) stage; eval the final stage instead
-    if config.curriculum_stages:
+    if args.task != "pickplace" and config.curriculum_stages:
         final_stage = config.curriculum_stages[-1]
         if args.task == "peg":
             env.set_curriculum_params(

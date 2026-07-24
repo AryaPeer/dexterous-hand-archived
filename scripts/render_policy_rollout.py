@@ -33,12 +33,22 @@ def _render_task(
         from dexterous_hand.envs.scene_builder import build_scene
 
         config_cls, env_cls, build_fn = MjxGraspTrainConfig, ShadowHandGraspMjxEnv, build_scene
-    else:
+    elif task == "peg":
         from dexterous_hand.config import MjxPegTrainConfig
         from dexterous_hand.envs.peg_env import ShadowHandPegMjxEnv
         from dexterous_hand.envs.peg_scene_builder import build_peg_scene
 
         config_cls, env_cls, build_fn = MjxPegTrainConfig, ShadowHandPegMjxEnv, build_peg_scene
+    else:
+        from dexterous_hand.config import MjxPickPlaceTrainConfig
+        from dexterous_hand.envs.pickplace_env import ShadowHandPickPlaceMjxEnv
+        from dexterous_hand.envs.pickplace_scene_builder import build_pickplace_scene
+
+        config_cls, env_cls, build_fn = (
+            MjxPickPlaceTrainConfig,
+            ShadowHandPickPlaceMjxEnv,
+            build_pickplace_scene,
+        )
 
     config = config_cls()
     load_saved_config(config, model_path)
@@ -52,7 +62,7 @@ def _render_task(
     raw_env: Any = env_cls.from_config(config)
 
     # from_config seeds the curriculum's FIRST (easiest) stage; render the final stage instead
-    if config.curriculum_stages:
+    if task != "pickplace" and config.curriculum_stages:
         final_stage = config.curriculum_stages[-1]
         if task == "peg":
             raw_env.set_curriculum_params(
@@ -86,6 +96,8 @@ def _render_task(
 
         qpos = np.asarray(raw_env._mjx_data_batch.qpos[0])
         cpu_data.qpos[:] = qpos
+        if cpu_model.nmocap > 0:
+            cpu_data.mocap_pos[:] = np.asarray(raw_env._mjx_data_batch.mocap_pos[0])
         mujoco.mj_forward(cpu_model, cpu_data)
         renderer.update_scene(cpu_data, camera="track_cam")
         frames.append(renderer.render().copy())
@@ -102,11 +114,13 @@ def _render_task(
 
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
-    ap.add_argument("--task", choices=("grasp", "peg", "both"), default="both")
+    ap.add_argument("--task", choices=("grasp", "peg", "pickplace", "both"), default="both")
     ap.add_argument("--grasp-model", type=Path, default=None)
     ap.add_argument("--grasp-vec-normalize", type=Path, default=None)
     ap.add_argument("--peg-model", type=Path, default=None)
     ap.add_argument("--peg-vec-normalize", type=Path, default=None)
+    ap.add_argument("--pickplace-model", type=Path, default=None)
+    ap.add_argument("--pickplace-vec-normalize", type=Path, default=None)
     ap.add_argument("--out-dir", type=Path, default=Path("runs/render_overnight"))
     ap.add_argument("--steps", type=int, default=None)
     ap.add_argument("--seed", type=int, default=0)
@@ -114,9 +128,13 @@ def main() -> None:
     args = ap.parse_args()
 
     tasks = ["grasp", "peg"] if args.task == "both" else [args.task]
+    model_by_task = {
+        "grasp": (args.grasp_model, args.grasp_vec_normalize),
+        "peg": (args.peg_model, args.peg_vec_normalize),
+        "pickplace": (args.pickplace_model, args.pickplace_vec_normalize),
+    }
     for task in tasks:
-        model_path = args.grasp_model if task == "grasp" else args.peg_model
-        vn_path = args.grasp_vec_normalize if task == "grasp" else args.peg_vec_normalize
+        model_path, vn_path = model_by_task[task]
         if model_path is None or vn_path is None:
             raise SystemExit(f"--{task}-model and --{task}-vec-normalize are required for task={task}")
         out_path = args.out_dir / f"{task}_rollout.mp4"

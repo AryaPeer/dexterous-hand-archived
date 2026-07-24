@@ -2,7 +2,7 @@
 
 Training a simulated Shadow Hand to solve manipulation tasks with reinforcement learning. Built on MuJoCo 3, MJX (JAX-backed batched physics), and SBX PPO.
 
-The hand has 24 degrees of freedom and learns two tasks: grasping a cube and peg-in-hole insertion. Both policies share a clamped-σ Gaussian actor (see `dexterous_hand/policies/clamped_actor.py`).
+The hand has 24 degrees of freedom and learns three tasks: grasping a cube, pick-and-place to a goal, and peg-in-hole insertion. All policies share a clamped-σ Gaussian actor (see `dexterous_hand/policies/clamped_actor.py`).
 
 ## Requirements
 
@@ -42,6 +42,9 @@ uv run python main.py train-grasp-mjx --num-envs 768 --total-timesteps 70000000
 
 # Peg-in-hole (PPO, 150M default, 768 envs, assembly curriculum)
 uv run python main.py train-peg-mjx --num-envs 768 --total-timesteps 150000000
+
+# Pick-and-place (PPO, 70M default, 768 envs, random goal)
+uv run python main.py train-pickplace-mjx --num-envs 768 --total-timesteps 70000000
 ```
 
 Each command also has a `resume-*-mjx` counterpart that reloads `final_model.zip` + `vec_normalize.pkl` from a previous run and continues for `--additional-timesteps`. See §8 of `runpod_peg_full.md` or §7 of `runpod_grasp_full.md`.
@@ -57,6 +60,10 @@ For end-to-end RunPod recipes (setup, env vars, tmux, watcher, pass criteria), s
 ### Grasping
 
 Pick a cube off the table and hold it at height. Actuator set: 23 (X/Y/Z slider + 20 hand joints), obs 108.
+
+### Pick-and-place
+
+Pick a cube off the table, carry it to a randomized goal marker, and release it on target. Trained from scratch (no curriculum). Actuator set: 23 (X/Y/Z slider + 20 hand joints), obs 114 (adds goal position + object-to-goal vector).
 
 ### Peg-in-hole
 

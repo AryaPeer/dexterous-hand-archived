@@ -2,9 +2,16 @@
 
 import jax.numpy as jnp
 
-from dexterous_hand.config import PegRewardConfig, PegSceneConfig, RewardConfig
+from dexterous_hand.config import (
+    PegRewardConfig,
+    PegSceneConfig,
+    PickPlaceRewardConfig,
+    PickPlaceSceneConfig,
+    RewardConfig,
+)
 from dexterous_hand.rewards.grasp_reward import grasp_reward, init_grasp_reward_state
 from dexterous_hand.rewards.peg_reward import init_peg_reward_state, peg_reward
+from dexterous_hand.rewards.pickplace_reward import init_pickplace_reward_state, pickplace_reward
 
 
 def check_peg() -> bool:
@@ -234,15 +241,130 @@ def check_grasp() -> bool:
     return pass_delta and monotonic
 
 
+def check_pickplace() -> bool:
+    cfg = PickPlaceRewardConfig()
+    scfg = PickPlaceSceneConfig()
+    table_h = scfg.table_height
+    half = scfg.object_half_extent
+    rest_z = table_h + half
+    initial_z = rest_z + 0.001
+    source_xy = (0.075, 0.0)
+    goal_xy = scfg.goal_nominal_xy
+
+    def run(
+        obj_xy: tuple[float, float],
+        obj_z: float,
+        gripped: bool,
+        was_lifted: bool = False,
+        steady_steps: int = 1,
+    ) -> dict:
+        state = init_pickplace_reward_state(initial_z, table_h)
+        state = state._replace(was_lifted=jnp.array(was_lifted))
+        px, py = obj_xy
+        if gripped:
+            fp = jnp.array(
+                [
+                    [px + 0.005, py, obj_z],
+                    [px - 0.005, py, obj_z],
+                    [px - 0.005, py + 0.005, obj_z],
+                    [px - 0.005, py - 0.005, obj_z],
+                    [px - 0.005, py - 0.01, obj_z],
+                ]
+            )
+            mask = jnp.array([True, True, True, True, True])
+        else:
+            fp = jnp.tile(jnp.array([px, py, obj_z + 0.08]), (5, 1))
+            mask = jnp.array([False] * 5)
+        info: dict = {}
+        for _ in range(steady_steps):
+            _, state, info = pickplace_reward(
+                state=state,
+                finger_positions=fp,
+                object_position=jnp.array([px, py, obj_z]),
+                object_linear_velocity=jnp.zeros(3),
+                finger_contact_mask=mask,
+                goal_xy=jnp.asarray(goal_xy),
+                actions=jnp.zeros(23),
+                table_height=table_h,
+                object_half_extent=half,
+                weights=cfg.weights,
+                lift_target=cfg.lift_target,
+                carry_clear_height=cfg.carry_clear_height,
+                goal_radius=cfg.goal_radius,
+                hold_velocity_threshold=cfg.hold_velocity_threshold,
+                drop_penalty_value=cfg.drop_penalty,
+                no_contact_idle_penalty=cfg.no_contact_idle_penalty,
+                success_bonus_per_step=cfg.success_bonus_per_step,
+                place_hold_steps=cfg.place_hold_steps,
+                reach_tanh_k=cfg.reach_tanh_k,
+                transport_tanh_k=cfg.transport_tanh_k,
+                goal_tanh_k=cfg.goal_tanh_k,
+                on_table_tol=cfg.on_table_tol,
+                on_table_k=cfg.on_table_k,
+                at_rest_k=cfg.at_rest_k,
+                fingertip_weights=cfg.fingertip_weights,
+                drop_arm_height=cfg.drop_arm_height,
+                action_penalty_scale=cfg.action_penalty_scale,
+                idle_grace_steps=cfg.idle_grace_steps,
+            )
+        return info
+
+    s_reach = run(source_xy, rest_z, gripped=False)
+    s_grip = run(source_xy, rest_z, gripped=True)
+    s_lift = run(source_xy, rest_z + cfg.lift_target, gripped=True)
+    s_hover = run(goal_xy, rest_z + cfg.lift_target, gripped=True)
+    s_settled = run(goal_xy, rest_z, gripped=False, was_lifted=True,
+                    steady_steps=cfg.place_hold_steps + 5)
+    s_settled_nos = run(goal_xy, rest_z, gripped=False, was_lifted=True, steady_steps=1)
+    s_bulldoze = run(goal_xy, rest_z, gripped=True, was_lifted=False)
+    s_parked = run(source_xy, rest_z, gripped=False, steady_steps=30)
+
+    t_reach = float(s_reach["reward/total"])
+    t_grip = float(s_grip["reward/total"])
+    t_lift = float(s_lift["reward/total"])
+    t_hover = float(s_hover["reward/total"])
+    t_settled = float(s_settled["reward/total"])
+    t_settled_nos = float(s_settled_nos["reward/total"])
+    t_parked = float(s_parked["reward/total"])
+    placed_bulldoze = float(s_bulldoze["reward/placed"])
+
+    print("\n=== PICKPLACE reward gradient ===\n")
+    print("  winning-trajectory per-step totals:")
+    print(f"    reach-only (no grip)           = {t_reach:>9.3f}")
+    print(f"    gripped @ source               = {t_grip:>9.3f}")
+    print(f"    gripped lifted @ source        = {t_lift:>9.3f}")
+    print(f"    carried, lifted over goal      = {t_hover:>9.3f}")
+    print(f"    RELEASED, settled @ goal       = {t_settled:>9.3f}")
+    print(f"    released @ goal (no annuity)   = {t_settled_nos:>9.3f}")
+    print(f"    parked, no grip                = {t_parked:>9.3f}")
+    print(f"    bulldozed @ goal (never lifted) placed = {placed_bulldoze:>7.4f}")
+    print()
+
+    monotone = t_reach < t_grip < t_lift < t_hover < t_settled
+    anti_cliff = t_settled > t_hover and t_settled_nos > t_hover
+    parked_pays_nothing = t_parked < 1.0 and t_parked < t_grip
+    no_bulldoze = placed_bulldoze < 0.05
+
+    print(f"  GATE 1: monotone reach<grip<lift<carry<settled   {'PASS' if monotone else 'FAIL'}")
+    print(f"  GATE 2: settled beats carry (release, no dip)    {'PASS' if anti_cliff else 'FAIL'}")
+    print(f"  GATE 3: parked-ungripped pays ~nothing           "
+          f"{'PASS' if parked_pays_nothing else 'FAIL'}")
+    print(f"  GATE 4: bulldozing (never lifted) pays nothing   {'PASS' if no_bulldoze else 'FAIL'}")
+
+    return monotone and anti_cliff and parked_pays_nothing and no_bulldoze
+
+
 if __name__ == "__main__":
     peg_ok = check_peg()
     grasp_ok = check_grasp()
+    pickplace_ok = check_pickplace()
     print()
     print("=" * 60)
-    print(f"PEG:   {'PASS' if peg_ok else 'FAIL'}")
-    print(f"GRASP: {'PASS' if grasp_ok else 'FAIL'}")
+    print(f"PEG:       {'PASS' if peg_ok else 'FAIL'}")
+    print(f"GRASP:     {'PASS' if grasp_ok else 'FAIL'}")
+    print(f"PICKPLACE: {'PASS' if pickplace_ok else 'FAIL'}")
     print("=" * 60)
-    if not (peg_ok and grasp_ok):
+    if not (peg_ok and grasp_ok and pickplace_ok):
         print("\nDO NOT spend on a full run — fix reward shape first.")
         raise SystemExit(1)
     print("\nReward gradient is correctly oriented. Sanity run is safe to launch.")
